@@ -461,7 +461,7 @@ $ curl http://localhost:3000/api/PKT/pkt/valid/bc1qar0srrr7xfkvy5l643lydnw9re59g
 ```
 </details>
 
-### GET /api/<chain>/<network>/stats/richlist[/<limit>][/<pageNum>]
+### GET ```/api/<chain>/<network>/stats/richlist[/<limit>][/<pageNum>]```
 This is a [paged query](#paged-queries), the maximum allowable limit is 500 results. It provides
 balance information for the "richest" addresses known to this block explorer.
 
@@ -522,7 +522,7 @@ $ curl http://localhost:3000/api/PKT/pkt/stats/richlist/3/1
 ```
 </details>
 
-### GET /api/<chain>/<network>/stats/daily-transactions
+### GET `/api/<chain>/<network>/stats/daily-transactions`
 
 This provides the number of transactions which have landed in the chain each day.
 Coinbase transactions are counted and the days are separated by the day in UTC time.
@@ -578,11 +578,11 @@ $ curl http://localhost:3000/api/PKT/pkt/stats/daily-transactions
 ```
 </details>
 
-### GET /api/<chain>/<network>/address/<address>/
+### GET `/api/<chain>/<network>/address/<address>/`
 This query currently returns nothing but an empty array, in the future it may return
 some vital statistics for an address.
 
-### GET /api/<chain>/<network>/address/<address>/balance
+### GET `/api/<chain>/<network>/address/<address>/balance`
 This query gets the current unconfirmed, confirmed, balance, spent and burned coins for an address
 as well as the number of transactions received and spent for that address. All amounts of coins are
 base-10 string representations of numbers of atomic units of currency.
@@ -618,7 +618,7 @@ $ curl http://localhost:3000/api/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9
 ```
 </details>
 
-### GET /api/<chain>/<network>/address/<address>/coins[/<limit>][/<pageNum>]
+### GET `/api/<chain>/<network>/address/<address>/coins[/<limit>][/<pageNum>]`
 This query gets the transactions which paid to and from this address. It is a
 [paged query](#paged-queries) and because of the combinatorial explosion of "related transactions",
 no limit greater than 10 is allowed.
@@ -877,7 +877,7 @@ $ curl http://localhost:3000/api/PKT/pkt/address/pkt1qqqpseuqdmfdxd9lncr6jxzvfaj
 ```
 </details>
 
-### GET /api/<chain>/<network>/block?<PARAMS>
+### GET `/api/<chain>/<network>/block?<PARAMS>`
 
 DEPRECATED: This will soon be replaced by a /mainchain standard form [paged query](#paged-queries).
 
@@ -931,13 +931,13 @@ $ curl 'http://localhost:3000/api/PKT/pkt/block?limit=2&since=500'
 ```
 </details>
 
-### GET /api/<chain>/<network>/block/tip
+### GET `/api/<chain>/<network>/block/tip`
 
 DEPRECATED: This will soon be replaced by a /mainchain standard form [paged query](#paged-queries).
 
 This is simply an alias for `/api/<chain>/<network>/block/?limit=1`
 
-### GET /api/<chain>/<network>/block/<number_or_hash>
+### GET `/api/<chain>/<network>/block/<number_or_hash>`
 
 This query results in a single block type entry, it can be specified by number
 (i.e. main chain height) or by hash.
@@ -977,7 +977,7 @@ $ curl http://localhost:3000/api/PKT/pkt/block/f79cf93e02e51e2458054cd4de9c87d8c
 ```
 </details>
 
-### GET /api/<chain>/<network>/block/<hash>/coins[/<limit>][/<page>]
+### GET `/api/<chain>/<network>/block/<hash>/coins[/<limit>][/<page>]`
 
 This is a query to get all of the payments related to the transactions in a particular block.
 This is a standard [paged query](#paged-queries)
@@ -1084,7 +1084,7 @@ $ curl http://localhost:3000/api/PKT/pkt/block/f79cf93e02e51e2458054cd4de9c87d8c
 ```
 </details>
 
-### GET /api/<chain>/<network>/tx/?blockHash=<hash>
+### GET `/api/<chain>/<network>/tx/?blockHash=<hash>`
 This query gets the basic transaction metadata related to all transactions included in a given
 block.
 
@@ -1140,7 +1140,7 @@ $ curl http://localhost:3000/api/PKT/pkt/tx?blockHash=13255430c58379279671e44861
 ```
 </details>
 
-### GET /api/PKT/pkt/tx/<txid>
+### GET `/api/PKT/pkt/tx/<txid>`
 This endpoint gets a particular transaction in the standard form ([tbl_tx_t](#transaction)),
 plus a few extra fields, the additional fields relate to the transaction's current status:
 
@@ -1177,10 +1177,10 @@ $ curl http://localhost:3000/api/PKT/pkt/tx/3ca8e8480dbd8a16886c352a958c78d88fcb
 }
 ```
 
-### GET /api/PKT/pkt/tx/<txid>/coins[/<limit>][/<pageNum>]
+### GET `/api/PKT/pkt/tx/<txid>/coins[/<limit>][/<pageNum>]`
 This is a [paged query](#paged-queries) for getting the payments spent and the payments created
 by a given transaction. The return value is precisely the same format as
-[block/coins](#get__api__chain___network__block__hash__coins___limit_____page__) but there will
+[block/coins](#get___api__chain___network__block__hash__coins___limit_____page___) but there will
 be only one txid in the txid list.
 
 ```bash
