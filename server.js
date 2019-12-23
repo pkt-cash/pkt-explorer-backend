@@ -299,11 +299,15 @@ const addressBalance = (sess, address) => {
       sumIf(value, bitShiftRight(state, 3) == 3)  AS spent,
       sumIf(value, bitShiftRight(state, 3) == 4)  AS burned,
       count()                                     AS recvCount,
-      countIf(bitShiftRight(state, 3) == 3)       AS spentCount
+      countIf(bitShiftRight(state, 3) == 3)       AS spentCount,
+      sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0))  AS mined24
+
     FROM (
       SELECT
-          argMax(value,       dateMs) AS value,
-          argMax(state,       dateMs) AS state
+          any(value)               AS value,
+          argMax(state,    dateMs) AS state,
+          any(coinbase)            AS coinbase,
+          argMax(mintTime, dateMs) AS mintTime
         FROM coins
         WHERE address = '${e(address)}'
         GROUP BY (mintTxid,mintIndex)
