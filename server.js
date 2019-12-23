@@ -319,7 +319,6 @@ const addressBalance = (sess, address) => {
 };
 
 const queryTx = (sess, whereClause, then) => {
-  //[{"txid":"043754c2bd0cfd24f6591014e0ca5bc880d8e16a8c2fada7ad0f4a4de5ebd5a1","size":223,"version":1,"locktime":0,"inputCount":1,"outputCount":2,"value":"1389051096","coinbase":"","firstSeen":"2019-12-13 13:35:27",
   sess.ch.query(`SELECT
       *
     FROM tbl_tx
@@ -416,12 +415,13 @@ const dedupCoins = (coins) => {
   for (const c of coins) {
     const key = c.mintTxid + '|' + String(c.mintIndex);
     const n = txDate[key];
-    if (!n || n < c.dateMs) {
-      txDate[key] = c.dateMs;
+    const time = Number(c.dateMs);
+    if (!n || n < time) {
+      txDate[key] = time;
     }
   }
   return coins.filter((c) => (
-    txDate[c.mintTxid + '|' + String(c.mintIndex)] === c.dateMs
+    txDate[c.mintTxid + '|' + String(c.mintIndex)] === Number(c.dateMs)
   ));
 };
 
