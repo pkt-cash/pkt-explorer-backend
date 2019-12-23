@@ -1176,6 +1176,7 @@ $ curl http://localhost:3000/api/PKT/pkt/tx/3ca8e8480dbd8a16886c352a958c78d88fcb
         "blockHeight": 189620
 }
 ```
+</details>
 
 ### GET `/api/PKT/pkt/tx/<txid>/coins[/<limit>][/<pageNum>]`
 This is a [paged query](#paged-queries) for getting the payments spent and the payments created
@@ -1284,3 +1285,4 @@ curl http://localhost:3000/api/PKT/pkt/tx/3ca8e8480dbd8a16886c352a958c78d88fcb6c
 	"next": ""
 }
 ```
+</details>
