@@ -1181,7 +1181,7 @@ $ curl http://localhost:3000/api/PKT/pkt/tx/3ca8e8480dbd8a16886c352a958c78d88fcb
 ### GET `/api/PKT/pkt/tx/<txid>/coins[/<limit>][/<pageNum>]`
 This is a [paged query](#paged-queries) for getting the payments spent and the payments created
 by a given transaction. The return value is precisely the same format as
-[block/coins](#get___api__chain___network__block__hash__coins___limit_____page___) but there will
+[block/coins](#get-apichainnetworkblockhashcoinslimitpage) but there will
 be only one txid in the txid list.
 
 ```bash
