@@ -382,7 +382,7 @@ $ curl http://localhost:3000/api/status/enabled-chains ; echo
 ```
 </details>
 
-### GET /api/<chain>/<network>/valid/<address_number_or_hash>
+### GET `/api/<chain>/<network>/valid/<address_number_or_hash>`
 This will verify whether a given number, address, or hash is valid for the given chain.
 If `address_number_or_hash` is a string of 32 hex pairs then it will be automatically accepted as
 potentially a transaction or a block hash.
