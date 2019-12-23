@@ -1,5 +1,6 @@
 /*@flow*/
 /* global BigInt */
+// SPDX-License-Identifier: MIT
 'use strict';
 const nThen = require('nthen');
 const RpcClient = require('bitcoind-rpc');

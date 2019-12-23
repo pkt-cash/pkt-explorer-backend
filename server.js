@@ -1,5 +1,6 @@
 /*@flow*/
 /* global BigInt */
+// SPDX-License-Identifier: MIT
 'use strict';
 const Http = require('http');
 const Querystring = require('querystring');

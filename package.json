@@ -1,13 +1,13 @@
 {
-  "name": "clicksight",
+  "name": "pkt-explorer-backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "A server backend for a block explorer",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "Caleb James DeLisle",
+  "license": "MIT",
   "dependencies": {
     "@apla/clickhouse": "^1.6.1",
     "bech32": "^1.1.3",

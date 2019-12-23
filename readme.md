@@ -1286,3 +1286,9 @@ curl http://localhost:3000/api/PKT/pkt/tx/3ca8e8480dbd8a16886c352a958c78d88fcb6c
 }
 ```
 </details>
+
+## License and Funding
+This project is may be used and copied in accordance with the terms of the MIT license.
+
+The development has been funded by the
+[PKT Block Explorer Project](https://github.com/pkt-cash/ns-projects/blob/master/projects/2019_11_13_pkt_insight.md)
