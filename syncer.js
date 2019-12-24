@@ -730,6 +730,12 @@ const retrier = (doThis) => {
 const rpcGetBlockByHash = (ctx, hash /*:string*/, done) => {
   retrier((ut) => {
     ctx.btc.getBlock(hash, true, true, ut(rpcRes((err, ret) => {
+      if (err && /503 Too busy/.test(err.message)) {
+        ctx.rpclog.debug("503 too busy, retrying in 10 seconds...");
+        return void setTimeout(() => {
+          rpcGetBlockByHash(ctx, hash, done);
+        }, 10000);
+      }
       if (!ret) { return void done(err); }
       done(null, (ret /*:RpcBlock_t*/));
     })));
