@@ -41,6 +41,7 @@ type Error_t = {
   error: string,
   fn: string
 };
+const BigInt = (x:any)=>0;
 */
 
 const complete = (sess /*:Session_t*/, error /*:Error_t|null*/, data) => {
@@ -50,7 +51,11 @@ const complete = (sess /*:Session_t*/, error /*:Error_t|null*/, data) => {
     sess.res.statusCode = error.code;
     sess.res.end(JSON.stringify(error, null, '\t'));
   } else {
-    sess.res.end(JSON.stringify(data, null, '\t'));
+    sess.res.end(JSON.stringify(data, (_, x) => {
+      // $FlowFixMe - new fancy js stuff
+      if (typeof x !== 'bigint') { return x; }
+      return x.toString();
+    }, '\t'));
   }
   const line = sess.req.method + ' ' + sess.req.url + ' ' + sess.res.statusCode +
     ((error) ? ` (${error.error}) in (${error.fn})` : "");
@@ -206,17 +211,18 @@ const queryBlocks0 = (sess, fn, whereClause, then) => {
   sess.ch.query(`SELECT
       *
     FROM tbl_blk
-    WHERE ${whereClause}`, (err, ret) => {
-      if (err || !ret) {
-        return void complete(sess, dbError(err, fn));
-      }
-      if (ret.length === 0) {
-        return void complete(sess, fourOhFour(sess, "no blocks found", fn));
-      }
-      fixDates(ret, ['time']);
-      ret.sort((a,b) => b.height - a.height);
-      return void then(ret);
-    });
+    WHERE ${whereClause}
+  `, (err, ret) => {
+    if (err || !ret) {
+      return void complete(sess, dbError(err, fn));
+    }
+    if (ret.length === 0) {
+      return void complete(sess, fourOhFour(sess, "no blocks found", fn));
+    }
+    fixDates(ret, ['time']);
+    ret.sort((a,b) => b.height - a.height);
+    return void then(ret);
+  });
 };
 
 const queryBlocks = (sess, urlq, filter) => {
@@ -263,6 +269,29 @@ const queryBlockByNumber = (sess, number) => {
       LIMIT 1
   )`, (ret) => {
     complete(sess, null, ret[0]);
+  });
+};
+
+const chain = (sess, up, limit, pgnum) => {
+  const lim = limitFromPage(limit, pgnum, `/chain/${(up) ? 'up' : 'down'}`, 100);
+  queryBlocks0(sess, 'chain', `hash IN (
+    SELECT
+        hash
+      FROM int_mainChain
+      FINAL
+      ORDER BY height ${(up) ? 'ASC' : 'DESC'}
+      LIMIT ${lim.limit}
+  )`, (ret) => {
+    if (up) {
+      ret.sort((a,b) => a.height - b.height);
+    } else {
+      ret.sort((a,b) => b.height - a.height);
+    }
+    return void complete(sess, null, {
+      results: ret,
+      prev: lim.prev,
+      next: lim.getNext(ret.length)
+    });
   });
 };
 
@@ -323,6 +352,25 @@ const addressBalance = (sess, address) => {
   });
 };
 
+const isValidAddress = (config, addr) => {
+  try {
+    const x = Bs58Check.decode(addr);
+    return config.bs58Prefixes.indexOf(x[0]) > -1;
+  } catch (e) { }
+  try {
+    const x = Bech32.decode(addr);
+    return x.prefix === config.bech32Prefix;
+  } catch (e) { }
+  return false;
+};
+
+const address1 = (sess, address) => {
+  if (!isValidAddress(sess.config, address)) {
+    return void complete(sess, { code: 400, error: "Invalid Address", fn: 'address1' }, null);
+  }
+  addressBalance(sess, address);
+};
+
 const queryTx = (sess, whereClause, then) => {
   sess.ch.query(`SELECT
       *
@@ -349,47 +397,144 @@ const txByBlockHash = (sess, blockHash) => {
   });
 };
 
-const txByTxid = (sess, txid) => {
-  let tx /*:Tables.tbl_tx_t & {
+const getTransactions = (sess, whereClause, done) => {
+  let txs /*:{[string]: Tables.tbl_tx_t & {
     blockHash?: string,
     blockTime?: string,
     blockHeight?: number
-  }*/;
+  }}*/ = {};
   nThen((w) => {
-    queryTx(sess, `txid = '${e(txid)}'`, w((x) => {
-      if (x.length < 1) {
-        w.abort();
-        return void complete(sess, fourOhFour(sess, "no such tx", "txByTxid"));
-      }
-      tx = x[0];
-    }));
-  }).nThen((w) => {
-    sess.ch.query(`
-      SELECT
-          *
-        FROM tbl_blk
-        WHERE hash IN (
-          SELECT
-              blockHash
-            FROM tbl_blkTx
-            WHERE txid = '${e(txid)}'
-            ORDER BY dateMs DESC
-            LIMIT 1
-        )
-        ORDER BY dateMs DESC
-        LIMIT 1
+    sess.ch.query(`SELECT
+        *
+      FROM tbl_tx
+      WHERE ${whereClause}
     `, w((err, ret) => {
       if (err || !ret) {
-        w.abort();
-        return void complete(sess, dbError(err, "txByTxid"));
+        return void done(dbError(err, "queryTx"));
+      } else {
+        fixDates(ret, ['firstSeen']);
+        for (const tx of ret) {
+          txs[tx.txid] = tx;
+          delete tx.txid;
+        }
       }
-      const block /*:Tables.tbl_blk_t*/ = ret[0];
-      tx.blockTime = new Date(block.time).toISOString();
-      tx.blockHash = block.hash;
-      tx.blockHeight = block.height;
     }));
   }).nThen((w) => {
-    return void complete(sess, null, tx);
+    if (Object.keys(txs).length === 0) { return; }
+    // In this case, repeating ourselves with a WHERE shaves 100ms off the query
+    const inclause = `(${Object.keys(txs).map(x => `'${e(x)}'`).join(',')})`;
+    let failed = false;
+    sess.ch.query(`
+      SELECT
+          time,
+          hash,
+          height,
+          blktx.txid
+        FROM (
+          SELECT
+              *
+            FROM tbl_blkTx
+            WHERE txid IN ${inclause}
+            ORDER BY dateMs DESC
+            LIMIT 1 BY txid
+        ) AS blktx
+        ALL INNER JOIN (
+          SELECT
+              *
+            FROM tbl_blk
+            WHERE hash IN (
+              SELECT
+                  blockHash
+                FROM tbl_blkTx
+                WHERE txid IN ${inclause}
+                ORDER BY dateMs DESC
+                LIMIT 1 BY txid
+            )
+            ORDER BY dateMs DESC
+            LIMIT 1 BY hash
+        ) AS blk ON blktx.blockHash = blk.hash
+        ORDER BY dateMs DESC
+        LIMIT 1 BY txid
+    `, w((err, ret) => {
+      if (err || !ret) {
+        if (failed) { return; }
+        failed = true;
+        w.abort();
+        return done(dbError(err, "txByTxid0"));
+      }
+      for (const block of ret) {
+        const tx = txs[block.txid];
+        tx.blockTime = new Date(block.time).toISOString();
+        tx.blockHash = block.hash;
+        tx.blockHeight = block.height;
+      }
+    }));
+
+    sess.ch.query(`SELECT
+        txid,
+        type,
+        address,
+        spentcount,
+        multiIf(spent > 0, spent, burned > 0, burned, received) AS value,
+        unconfirmed
+      FROM txview
+      FINAL
+      WHERE txid IN ${inclause}
+    `, w((err, ret) => {
+      if (err || !ret) {
+        if (failed) { return; }
+        failed = true;
+        w.abort();
+        return done(dbError(err, "txByTxid0"));
+      }
+      for (const elem of ret) {
+        const bt = txs[elem.txid] = txs[elem.txid] || {};
+        const type = bt[elem.type] = bt[elem.type] || {};
+        const bal = type[elem.address] = type[elem.address] || {
+            value: BigInt(0), spentcount: 0, unconfirmed: BigInt(0) };
+        bal.value += BigInt(elem.value);
+        bal.unconfirmed += BigInt(elem.unconfirmed);
+        bal.spentcount += Number(elem.spentcount);
+      }
+    }));
+  }).nThen((_) => {
+    done(null, txs);
+  });
+};
+
+const blockCoins1 = (sess, blockHash, limit, pgnum) => {
+  const lim = limitFromPage(limit, pgnum, `/block/${blockHash}/coins`, 50);
+  getTransactions(sess, `txid IN (
+    SELECT
+        txid
+      FROM tbl_blkTx
+      WHERE blockHash = '${e(blockHash)}'
+  )
+  ORDER BY coinbase DESC, txid
+  LIMIT ${lim.limit}
+  `, (err, ret) => {
+    if (!ret) {
+      if (!err) { err = fourOhFour(sess, "no such block", "blockCoins1"); }
+      return void complete(sess, err, null);
+    }
+    return void complete(sess, err, {
+      results: ret,
+      prev: lim.prev,
+      next: lim.getNext(Object.keys(ret).length)
+    });
+  });
+};
+
+const txByTxid = (sess, txid) => {
+  getTransactions(sess, `txid = '${e(txid)}'`, (err, ret) => {
+    if (!ret) {
+      if (!err) { err = fourOhFour(sess, "no such txid", "txByTxid"); }
+      return void complete(sess, err, null);
+    }
+    const txid = Object.keys(ret)[0];
+    const tx = ret[txid];
+    tx.txid = txid;
+    return void complete(sess, err, tx);
   });
 };
 
@@ -428,6 +573,60 @@ const dedupCoins = (coins) => {
   return coins.filter((c) => (
     txDate[c.mintTxid + '|' + String(c.mintIndex)] === Number(c.dateMs)
   ));
+};
+
+const addressCoins1 = (sess, address, limit, pgnum, nomine) => {
+  const lim = limitFromPage(limit, pgnum, `/address/${address}/coins`, 50);
+  getTransactions(sess, `txid IN (
+    SELECT
+        if(_spentTime > _mintTime, _spentTxid, mintTxid) AS txid
+      FROM (
+        SELECT
+            argMax(spentTxid, dateMs)  AS _spentTxid,
+            argMax(mintTime, dateMs)   AS _mintTime,
+            argMax(spentTime, dateMs)  AS _spentTime,
+            mintTxid
+          FROM coins
+          WHERE
+            address = '${e(address)}'
+            ${(nomine) ? `AND coinbase = 0` : ''}
+          GROUP BY mintTxid, mintIndex
+          ORDER BY if(_spentTime > _mintTime, _spentTime, _mintTime) DESC
+          LIMIT ${lim.limit}
+      )
+  )`, (err, ret) => {
+    if (!ret) {
+      return void complete(sess, err);
+    }
+    const next = lim.getNext(Object.keys(ret).length);
+    return void complete(sess, null, {
+      results: ret,
+      prev: lim.prev + ((lim.prev && nomine) ? '?nomine=1' : ''),
+      next: next + ((next && nomine) ? '?nomine=1' : '')
+    });
+  });
+};
+
+const addressIncome1 = (sess, address, limit, pgnum) => {
+  const lim = limitFromPage(limit, pgnum, `/address/${address}/income`, 100);
+  sess.ch.query(`SELECT
+      date,
+      sum(received) AS received
+    FROM addrincome
+    WHERE address = '${e(address)}'
+    GROUP BY address, date
+    ORDER BY date DESC
+    LIMIT ${lim.limit}
+  `, (err, ret) => {
+    if (err || !ret) {
+      return void complete(sess, dbError(err, "queryTx"));
+    }
+    complete(sess, null, {
+      result: ret,
+      prev: lim.prev,
+      next: lim.getNext(ret.length)
+    });
+  });
 };
 
 const addressCoins = (sess, address, limit, pgnum) => {
@@ -631,17 +830,6 @@ const enabledChains = (sess) => {
 };
 
 const isHash = (input) => /^[0-9a-fA-F]{64}$/.test(input);
-const isValidAddress = (config, addr) => {
-  try {
-    const x = Bs58Check.decode(addr);
-    return config.bs58Prefixes.indexOf(x[0]) > -1;
-  } catch (e) { }
-  try {
-    const x = Bech32.decode(addr);
-    return x.prefix === config.bech32Prefix;
-  } catch (e) { }
-  return false;
-};
 const isCannonicalPositiveIntOrZero = (num) => {
   const n = Number(num);
   if (!isFinite(n)) { return false; }
@@ -670,14 +858,22 @@ const onReq = (ctx, req, res) => {
     req: req,
     res: res,
     ch: ctx.ch,
-    config: undefined
+    config: undefined,
   };
-  if (req.url.startsWith('/api/status/enabled-chains')) {
-    return void enabledChains(sess);
-  }
   let parts = req.url.replace(/\?.*$/, '').split('/');
   let path = ctx.path;
   parts.shift();// leading ''
+  if (parts.shift() !== 'api') {
+    return void complete(sess, fourOhFour(sess, "path does not begin with /api", "onReq"));
+  }
+  let apiver = 0;
+  if (parts[0] === 'v1') {
+    apiver = 1;
+    parts.shift();
+  }
+  if (parts[0] === 'status' && parts[1] === 'enabled-chains') {
+    return void enabledChains(sess);
+  }
   while (parts.length) {
     if (!path) {
       return void complete(sess, fourOhFour(sess, "invalid path", "onReq"));
@@ -698,6 +894,52 @@ const onReq = (ctx, req, res) => {
 
   if (!sess.config) {
     return void complete(sess, fourOhFour(sess, "unsupported chain", "onReq"));
+  }
+
+  if (apiver === 1) {
+    switch (parts[0]) {
+      // /api/PKT/pkt/stats/
+      case 'stats': switch (parts[1]) {
+        // /api/PKT/pkt/stats/richlist
+        case 'richlist': return void richList(sess, parts[2], parts[3]);
+        case 'daily-transactions': return void dailyTransactions(sess);
+      } break;
+
+      // /api/PKT/pkt/address/
+      case 'address': switch (parts[1]) {
+        // /api/PKT/pkt/address/:addr/
+        default: const addr = parts[1]; switch (parts[2]) {
+          // /api/PKT/pkt/address/:addr/
+          case undefined: return void address1(sess, addr);
+          // /api/PKT/pkt/address/:addr/coins
+          case 'coins': return void addressCoins1(sess, addr, parts[3], parts[4], query.nomine);
+          case 'income': return void addressIncome1(sess, addr, parts[3], parts[4]);
+        }
+      } break;
+
+      case 'block': {
+        const blockHash = parts[1];
+        switch (parts[2]) {
+          case 'coins': return void blockCoins1(sess, blockHash, parts[3], parts[4]);
+          case undefined: return void queryBlock(sess, `hash = '${e(blockHash)}'`);
+        }
+      } break;
+
+      case 'chain': switch (parts[1]) {
+        case 'up': return void chain(sess, true, parts[2], parts[3]);
+        case 'down': return void chain(sess, false, parts[2], parts[3]);
+      } break;
+
+      // /api/PKT/pkt/tx/
+      case 'tx': {
+        // /api/PKT/pkt/tx/:txid/
+        const txid = parts[1];
+        switch (parts[2]) {
+          case 'detail': return void txCoins(sess, txid, parts[3], parts[4]);
+          case undefined: return void txByTxid(sess, txid);
+        }
+      } break;
+    }
   }
 
   switch (parts[0]) {
@@ -774,7 +1016,7 @@ const main = (config, argv) => {
   //conf.readonly = true;
   const ctx = (Object.freeze({
     ch: ClickHouse.create(conf),
-    path: Object.freeze({ api: Object.freeze(path) }),
+    path: Object.freeze(path),
     log: Log.create('srv'),
   }) /*:Context_t*/);
 

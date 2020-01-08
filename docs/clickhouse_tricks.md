@@ -197,7 +197,7 @@ INSERT INTO coins SELECT
     ORDER BY address,mintTxid,mintIndex, dateMs DESC
     LIMIT 1 BY (address,mintTxid,mintIndex)
   ) AS selection
-  ANY RIGHT JOIN temp_87a01fdafe04f44eca32541e1e ON
+  RIGHT JOIN temp_87a01fdafe04f44eca32541e1e ON
     selection.mintTxid = temp_87a01fdafe04f44eca32541e1e.mintTxid AND
     selection.mintIndex = temp_87a01fdafe04f44eca32541e1e.mintIndex
 ```

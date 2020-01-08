@@ -62,6 +62,7 @@ type Context_t = {
   rpclog: Log_t,
   chain: string,
   verifiers: Array<(()=>void)=>void>,
+  recompute: bool,
   mut: {
     headHash: string,
     headHeight: number
@@ -286,6 +287,12 @@ const stateTrans = (from, to, fields) => {
   stateTrans(spent, block,      [ 0,  1,  0,  0,  0,  1,  0 ]);
   stateTrans(spent, spent,      [ 0,  0,  0,  0,  0,  0,  0 ]);
   stateTrans(spent, burned,     [ 0,  0,  0,  0,  0,  0,  1 ]);
+
+  stateTrans(burned, nothing,   [ 0,  0,  0,  0,  0,  0, -1 ]);
+  stateTrans(burned, mempool,   [ 1,  0,  0,  0,  0,  0, -1 ]);
+  stateTrans(burned, block,     [ 0,  1,  0,  0,  0,  0, -1 ]);
+  stateTrans(burned, spent,     [ 0,  0,  0,  0,  0,  0, -1 ]);
+  stateTrans(burned, burned,    [ 0,  0,  0,  0,  0,  0,  0 ]);
 })();
 
 const coins = DATABASE.add('coins', ClickHouse2.table/*::<Tables.coins_t>*/({
@@ -418,134 +425,272 @@ const int_mainChain_mv = DATABASE.add('int_mainChain_mv', ClickHouse2.materializ
 const MAINCHAIN_VIEW = `v_mainChain`;
 const TIP_VIEW = `v_tip`;
 
-const MISSING_BLK_TX = 'missing_blkTx';
-const MISSING_TX =     'missing_tx';
-const MISSING_TXOUT =  'missing_txout';
-const MISSING_TXIN =  'missing_txin';
-
 const error = (err, w) => {
   throw new Error(err);
 };
 
-/*::
-type CountCheckerArgs_t = {
-  name: string, // name of the view to create
-  keyType: string, // FixedString(64)
-  authority: {
-    tblName: string, // the table which has the authoritative count
-    keyName: string, // name of the field which contains the (primary) key
-    sumField: string, // name of the field containing the authoritative total
-  },
-  sum: {
-    tblName: string, // name of the table to collect for summing
-    keyName: string, // name of the key to the authoritative component
-    countField: string, // name of a field to count unique values on
-  }
+const eexistTable = (err) => {
+  if (!err) { return false; }
+  if (err.message.indexOf("doesn't exist") > -1) { return true; }
+  if (err.message.indexOf("Table is dropped") > -1) { return true; }
+  return false;
 };
-*/
-const mkCountChecker = (ctx, args/*:CountCheckerArgs_t*/, done) => {
-  const { name, keyType } = args;
-  const mainTable = `int_${name}`;
-  const authorityMVName = `int_${name}_${args.authority.tblName}`;
-  const sumMVName = `int_${name}_${args.sum.tblName}`;
-  nThen((w) => {
-    ctx.ch.modify(`CREATE TABLE IF NOT EXISTS ${mainTable}
-      (
-        key ${keyType},
-        source Enum(
-          '${authorityMVName}' = 0,
-          '${sumMVName}' = 1
-        ),
-        ${authorityMVName} Int32,
-        ${sumMVName} Int32,
-        dateMs UInt64
-      ) ENGINE ReplacingMergeTree(dateMs)
-      ORDER BY (key, source)
-    `, w((err, _) => {
-      if (err) { return void error(err, w); }
-    }));
-  }).nThen((w) => {
-    const { tblName, keyName, countField } = args.sum;
-    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS ${sumMVName}
-      TO ${mainTable}
-      AS (SELECT
-        ${keyName} AS key,
-        0 AS ${authorityMVName},
-        ${countField} AS ${sumMVName},
-        max(dateMs) AS dateMs,
-        '${sumMVName}' AS source
-      FROM ${tblName} GROUP BY ${keyName})
-    `, w((err, _) => {
-      if (err) { return void error(err, w); }
-    }));
-  }).nThen((w) => {
-    const { tblName, keyName, sumField } = args.authority;
-    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS ${authorityMVName}
-      TO ${mainTable}
-      AS (SELECT
-        ${keyName} AS key,
-        ${sumField} AS ${authorityMVName},
-        0 AS ${sumMVName},
-        dateMs,
-        '${authorityMVName}' AS source
-      FROM ${tblName})
-    `, w((err, _) => {
-      if (err) { return void error(err, w); }
-    }));
-  }).nThen((w) => {
-    ctx.ch.modify(`CREATE VIEW IF NOT EXISTS v_${name}
-      AS (SELECT
-        key,
-        max(${authorityMVName}),
-        max(${sumMVName})
-      FROM ${mainTable}
-      GROUP BY key
-      HAVING max(${authorityMVName}) != max(${sumMVName}))
-    `, w((err) => {
-      if (err) { return void error(err, w); }
-    }));
-  }).nThen((w) => {
-    ctx.ch.modify(`CREATE VIEW IF NOT EXISTS refresh_${mainTable}
-      AS (
-        SELECT
-            ${args.authority.keyName} AS key,
-            '${authorityMVName}' AS source,
-            ${args.authority.sumField} AS ${authorityMVName},
-            0 AS ${sumMVName},
-            dateMs
-          FROM ${args.authority.tblName}
-        UNION ALL
-        SELECT
-            ${args.sum.keyName} AS key,
-            '${sumMVName}' AS source,
-            0 AS ${authorityMVName},
-            ${args.sum.countField} AS ${sumMVName},
-            max(dateMs) AS dateMs
-          FROM ${args.sum.tblName} GROUP BY ${args.sum.keyName}
-      )
-    `, w((err, _) => {
-      if (err) { return void error(err, w); }
-    }));
-  }).nThen((w) => {
-    done();
-  });
-  return (done) => {
-    ctx.snclog.info(`Resyncing ${name}`);
-    nThen((w) => {
-      ctx.ch.modify(`INSERT INTO ${mainTable}
-        SELECT * FROM refresh_${mainTable}
-      `, w((err, _) => {
-        if (err) { return void error(err, w); }
-      }));
-    }).nThen((w) => {
-      ctx.ch.query(`SELECT count() FROM v_${name}`, w((err, ret) => {
-        if (!ret) { return void error(err, w); }
-        ctx.snclog.info(`Resync completed with ${ret[0]['count()']} rows to update.`);
-      }));
-    }).nThen((w) => {
-      done();
+
+const dbCreateBalances = (ctx, done) => {
+  const e = (w) => {
+    return w((err, _) => {
+      if (!err) { return; }
+      w.abort();
+      done(err);
     });
   };
+  const selectClause = (state) => `SELECT
+      address,
+      ${Object.keys(MASK.add).map((k) => (
+        `value * (
+          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.add[k].toString()} ) != 0) -
+          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.sub[k].toString()} ) != 0)
+        ) AS ${k}`
+      )).join(',\n')}`;
+  nThen((w) => {
+    if (!ctx.recompute) { return; }
+    ctx.snclog.info('--recompute recomputing balances table');
+    nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS balances`, e(w));
+    }).nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS balances_mv`, e(w));
+    }).nThen(w());
+  }).nThen((w) => {
+    ctx.ch.query(`SELECT * FROM balances LIMIT 1`, w((err, _) => {
+      if (eexistTable(err)) {
+        return;
+      }
+      // err or already exists
+      w.abort();
+      return void done(err);
+    }));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE TABLE balances (
+        address        String,
+        ${FIELDS.map((f) => (
+          `${f} SimpleAggregateFunction(sum, Int64)`
+        )).join(', ')}
+      ) ENGINE AggregatingMergeTree()
+      ORDER BY address
+      `, e(w));
+  }).nThen((w) => {
+    // We mask the state here so that all states are from previous "nothing"
+    // because this is the first time this has ever been seen.
+    ctx.ch.modify(`INSERT INTO balances ${selectClause(`bitAnd(${0b111000}, state)`)}
+      FROM ${coins.name()}
+      FINAL
+    `, e(w));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS balances_mv TO balances AS
+      ${selectClause('state')} FROM ${coins.name()}
+    `, e(w));
+  }).nThen((w) => {
+    if (ctx.recompute) {
+      ctx.snclog.info('--recompute recomputing balances table COMPLETE');
+    }
+    done();
+  });
+};
+
+const dbCreateAddrIncome = (ctx, done) => {
+  const e = (w) => {
+    return w((err, _) => {
+      if (!err) { return; }
+      w.abort();
+      done(err);
+    });
+  };
+  const fields = ['received'];
+  const selectClause = (state) => `SELECT
+      address,
+      toDate(mintTime) AS date,
+      ${fields.map((k) => (
+        `value * (
+          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.add[k].toString()} ) != 0) -
+          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.sub[k].toString()} ) != 0)
+        ) AS ${k}`
+      )).join(',\n')}`;
+  nThen((w) => {
+    if (!ctx.recompute) { return; }
+    ctx.snclog.info('--recompute recomputing addrincome table');
+    nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS addrincome`, e(w));
+    }).nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS addrincome_mv_recv`, e(w));
+    }).nThen(w());
+  }).nThen((w) => {
+    ctx.ch.query(`SELECT * FROM addrincome LIMIT 1`, w((err, _) => {
+      if (eexistTable(err)) {
+        return;
+      }
+      // err or already exists
+      w.abort();
+      return void done(err);
+    }));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE TABLE addrincome (
+        address        String,
+        date           Date,
+        ${fields.map((f) => (
+          `${f} SimpleAggregateFunction(sum, Int64)`
+        )).join(', ')}
+      ) ENGINE AggregatingMergeTree()
+      ORDER BY (address, date)
+    `, e(w));
+  }).nThen((w) => {
+    // We mask the state here so that all states are from previous "nothing"
+    // because this is the first time this has ever been seen.
+    ctx.ch.modify(`INSERT INTO addrincome ${selectClause(`bitAnd(${0b111000}, state)`)}
+      FROM ${coins.name()}
+      FINAL
+    `, e(w));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS addrincome_mv TO addrincome AS
+      ${selectClause('state')} FROM ${coins.name()}
+    `, e(w));
+  }).nThen((_) => {
+    if (ctx.recompute) {
+      ctx.snclog.info('--recompute recomputing balances table COMPLETE');
+    }
+    done();
+  });
+};
+
+const dbCreateTxview = (ctx, done) => {
+  const fields = ['unconfirmed', 'received', 'spent', 'burned'];
+  const e = (w) => {
+    return (err) => {
+      if (err) {
+        w.abort();
+        return void done(err);
+      }
+    };
+  };
+  const select = (txid, io, state) => `SELECT
+      ${txid}  AS txid,
+      '${io}'  AS type,
+      address  AS address,
+      coinbase,
+      (
+        (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.add['spent'].toString()} ) != 0) -
+        (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.sub['spent'].toString()} ) != 0)
+      ) AS spentcount,
+      ${fields.map((k) => (
+        `value * (
+          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.add[k].toString()} ) != 0) -
+          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.sub[k].toString()} ) != 0)
+        ) AS ${k}`
+      )).join(',\n')}
+  `;
+  nThen((w) => {
+    if (!ctx.recompute) { return; }
+    ctx.snclog.info('--recompute recomputing txview table');
+    nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS txview`, e(w));
+    }).nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS txview_mv_out`, e(w));
+    }).nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS txview_mv_in`, e(w));
+    }).nThen(w());
+  }).nThen((w) => {
+    ctx.ch.query(`SELECT * FROM txview LIMIT 1`, w((err, _) => {
+      if (eexistTable(err)) {
+        return;
+      }
+      // err or already exists
+      w.abort();
+      return void done(err);
+    }));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE TABLE txview (
+        txid           FixedString(64),
+        type           Enum('input' = 0, 'output' = 1),
+        address        String,
+        coinbase       Int8,
+        spentcount     SimpleAggregateFunction(sum, Int64),
+        ${fields.map((f) => (
+          `${f} SimpleAggregateFunction(sum, Int64)`
+        )).join(', ')}
+      ) ENGINE AggregatingMergeTree()
+      ORDER BY (txid, type, address, coinbase)
+      `, w((err, _) => {
+        if (err) { return void error(err, w); }
+    }));
+  }).nThen((w) => {
+    ctx.ch.modify(`INSERT INTO txview
+      ${select('mintTxid', 'output', `bitAnd(${0b111000}, state)`)}
+      FROM ${coins.name()}
+      FINAL
+    `, w((err, _) => {
+        if (err) {
+          w.abort();
+          return void done(err);
+        }
+      }));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS txview_mv_out TO txview AS
+      ${select('mintTxid', 'output', 'state')}
+      FROM ${coins.name()}
+    `, w((err, _) => {
+        if (err) {
+          w.abort();
+          return void done(err);
+        }
+      }));
+  }).nThen((w) => {
+    ctx.ch.modify(`INSERT INTO txview
+      ${select('spentTxid', 'input', `bitAnd(${0b111000}, state)`)}
+      FROM ${coins.name()}
+      FINAL
+      WHERE spentTxid != toFixedString('',64)
+    `, w((err, _) => {
+        if (err) {
+          w.abort();
+          return void done(err);
+        }
+      }));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS txview_mv_in TO txview AS
+      ${select('spentTxid', 'input', 'state')}
+      FROM ${coins.name()}
+      WHERE spentTxid != toFixedString('',64)
+    `, w((err, _) => {
+        if (err) {
+          w.abort();
+          return void done(err);
+        }
+      }));
+  }).nThen((_) => {
+    if (ctx.recompute) {
+      ctx.snclog.info('--recompute recomputing txview table COMPLETE');
+    }
+    done();
+  });
+};
+
+const dbOptimize = (ctx, done) => {
+  let nt = nThen;
+  // filter so we don't get any materialized views
+  const tables0 = DATABASE.tables();
+  const tables = Object.keys(tables0).filter((t) => ('fields' in tables0[t]));
+  tables.forEach((t) => {
+    nt = nt((w) => {
+      ctx.ch.modify(`OPTIMIZE TABLE ${t}`, w((err, _) => {
+        if (err) {
+          w.abort();
+          return void done(err);
+        }
+      }));
+    }).nThen;
+  });
+  nt((_) => {
+    done();
+  });
 };
 
 const createTables = (ctx, done) => {
@@ -566,30 +711,23 @@ const createTables = (ctx, done) => {
       if (err) { return void error(err, w); }
     }));
   }).nThen((w) => {
-    ctx.ch.modify(`CREATE TABLE IF NOT EXISTS balances (
-        address        String,
-        ${FIELDS.map((f) => (
-          `${f} SimpleAggregateFunction(sum, Int64)`
-        )).join(', ')}
-      ) ENGINE AggregatingMergeTree()
-      ORDER BY address
-    `, w((err, _) => {
+    if (!ctx.recompute) { return; }
+    ctx.snclog.info('--recompute OPTIMIZE all tables');
+    dbOptimize(ctx, w((err, _) => {
       if (err) { return void error(err, w); }
     }));
   }).nThen((w) => {
-    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS balances_mv TO balances AS
-      SELECT
-          address,
-          ${Object.keys(MASK.add).map((k) => (
-            `value * (
-              (bitAnd( bitShiftLeft(toUInt64(1), state), ${MASK.add[k].toString()} ) != 0) -
-              (bitAnd( bitShiftLeft(toUInt64(1), state), ${MASK.sub[k].toString()} ) != 0)
-            ) AS ${k}`
-          )).join(',\n')}
-        FROM ${coins.name()}
-  `, w((err, _) => {
-    if (err) { return void error(err, w); }
-  }));
+    dbCreateBalances(ctx, w((err) => {
+      if (err) { return void error(err, w); }
+    }));
+  }).nThen((w) => {
+    dbCreateTxview(ctx, w((err) => {
+      if (err) { return void error(err, w); }
+    }));
+  }).nThen((w) => {
+    dbCreateAddrIncome(ctx, w((err) => {
+      if (err) { return void error(err, w); }
+    }));
   }).nThen((w) => {
     ctx.ch.modify(`CREATE VIEW IF NOT EXISTS ${MAINCHAIN_VIEW} AS
       SELECT
@@ -615,78 +753,6 @@ const createTables = (ctx, done) => {
     `, w((err, _) => {
       if (err) { return void error(err, w); }
     }));
-  }).nThen((w) => {
-    ctx.verifiers.push(
-      mkCountChecker(ctx, {
-        name: MISSING_BLK_TX,
-        keyType: tbl_blk.fields().hash.type.ch,
-        authority: {
-          tblName: tbl_blk.name(),
-          keyName: tbl_blk.fields().hash.name,
-          sumField: tbl_blk.fields().transactionCount.name,
-        },
-        sum: {
-          tblName: tbl_blkTx.name(),
-          keyName: tbl_blkTx.fields().blockHash.name,
-          countField: `uniqExact(${tbl_blkTx.fields().txid.name})`
-        }
-      }, w()));
-  }).nThen((w) => {
-    ctx.verifiers.push(
-      mkCountChecker(ctx, {
-        name: MISSING_TXIN,
-        keyType: 'FixedString(64)',
-        authority: {
-          tblName: tbl_tx.name(),
-          keyName: 'txid',
-          sumField: 'inputCount',
-        },
-        sum: {
-          tblName: coins.name(),
-          keyName: coins.fields().spentTxid.name,
-          countField: `uniqExact(${coins.fields().spentTxinNum.name})`
-        }
-      }, w()));
-  }).nThen((w) => {
-    ctx.verifiers.push(
-      mkCountChecker(ctx, {
-        name: MISSING_TXOUT,
-        keyType: 'FixedString(64)',
-        authority: {
-          tblName: tbl_tx.name(),
-          keyName: 'txid',
-          sumField: 'outputCount',
-        },
-        sum: {
-          tblName: coins.name(),
-          keyName: coins.fields().mintTxid.name,
-          countField: `uniqExact(${coins.fields().mintIndex.name})`
-        }
-      }, w()));
-  }).nThen((w) => {
-    ctx.verifiers.push(
-      mkCountChecker(ctx, {
-        name: MISSING_TX,
-        keyType: 'FixedString(64)',
-        authority: {
-          tblName: tbl_blkTx.name(),
-          keyName: 'txid',
-          sumField: '1',
-        },
-        sum: {
-          tblName: tbl_tx.name(),
-          keyName: 'txid',
-          countField: '1'
-        }
-      }, w()));
-  }).nThen((w) => {
-    let nt = nThen;
-    ctx.verifiers.forEach((v) => {
-      nt = nt((w) => {
-        v(w());
-      }).nThen;
-    });
-    nt(w());
   }).nThen((_) => {
     done();
   });
@@ -814,7 +880,8 @@ const getCoinbase = (ctx, txBlock, txout, value) => {
 
 const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs) /*:Tables.TxMinted_t*/ => {
   const { tx, block } = txBlock;
-  let address = '';
+  const script = Buffer.from(txout.scriptPubKey.hex, 'hex').toString('base64');
+  let address = `script:${script}`;
   if (!txout.scriptPubKey) {
   } else if (!txout.scriptPubKey.addresses) {
   } else if (!txout.scriptPubKey.addresses[0]) {
@@ -832,7 +899,7 @@ const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs
 
     seenTime:      (block) ? block.time : Math.floor(dateMs/1000),
     value:         value.toString(),
-    script:        Buffer.from(txout.scriptPubKey.hex, 'hex').toString('base64'),
+    script:        script,
     coinbase:      getCoinbase(ctx, txBlock, txout, value),
     mintBlockHash: (block) ? block.hash : "",
     mintHeight:    (block) ? block.height : -1,
@@ -1139,9 +1206,14 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
   });
 };
 
-const syncChain = (ctx, done) => {
+const syncChain = (ctx, force, done) => {
   let blocks = [];
   nThen((w) => {
+    if (force) {
+      ctx.mut.headHeight = 0;
+      ctx.mut.headHash = '';
+      return;
+    }
     if (ctx.mut.headHash) { return; }
     ctx.ch.query(`SELECT * FROM ${TIP_VIEW}`, w((err, ret) => {
       if (err) {
@@ -1247,6 +1319,11 @@ const syncChain = (ctx, done) => {
   //   };
   //   again();
   }).nThen((w) => {
+    if (!force) { return; }
+    dbOptimize(ctx, w((err, _) => {
+      if (err) { return void error(err, w); }
+    }));
+  }).nThen((w) => {
     ctx.snclog.debug("Chain synced");
     done();
   });
@@ -1285,6 +1362,7 @@ const main = (config, argv) => {
     rpclog: Log.create('rpc'),
     snclog: Log.create('snc'),
     verifiers: [],
+    recompute: (argv.indexOf('--recompute') > -1),
     mut: {
       headHash: '',
       headHeight: 0,
@@ -1293,8 +1371,11 @@ const main = (config, argv) => {
   nThen((w) => {
     createTables(ctx, w());
   }).nThen((w) => {
+    if (ctx.recompute) { return; }
+    const sync = argv.indexOf('--resync') > -1;
     const again = () => {
-      syncChain(ctx, w(() => {
+      syncChain(ctx, sync, w(() => {
+        if (sync) { return; }
         setTimeout(w(again), 5000);
       }));
     };
