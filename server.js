@@ -398,11 +398,14 @@ const txByBlockHash = (sess, blockHash) => {
 };
 
 const getTransactions = (sess, whereClause, done) => {
-  let txs /*:{[string]: Tables.tbl_tx_t & {
+  let txs /*:Array<Tables.tbl_tx_t & {
     blockHash?: string,
     blockTime?: string,
-    blockHeight?: number
-  }}*/ = {};
+    blockHeight?: number,
+    input: Array<{ address: string, value: string, spentcount: number, unconfirmed: string }>,
+    output: Array<{ address: string, value: string, spentcount: number, unconfirmed: string }>,
+  }>*/;
+  const byTxid = {};
   nThen((w) => {
     sess.ch.query(`SELECT
         *
@@ -413,16 +416,14 @@ const getTransactions = (sess, whereClause, done) => {
         return void done(dbError(err, "queryTx"));
       } else {
         fixDates(ret, ['firstSeen']);
-        for (const tx of ret) {
-          txs[tx.txid] = tx;
-          delete tx.txid;
-        }
+        txs = ret;
+        for (const tx of txs) { byTxid[tx.txid] = tx; }
       }
     }));
   }).nThen((w) => {
-    if (Object.keys(txs).length === 0) { return; }
+    if (txs.length === 0) { return; }
     // In this case, repeating ourselves with a WHERE shaves 100ms off the query
-    const inclause = `(${Object.keys(txs).map(x => `'${e(x)}'`).join(',')})`;
+    const inclause = `(${txs.map(x => `'${e(x.txid)}'`).join(',')})`;
     let failed = false;
     sess.ch.query(`
       SELECT
@@ -463,7 +464,7 @@ const getTransactions = (sess, whereClause, done) => {
         return done(dbError(err, "txByTxid0"));
       }
       for (const block of ret) {
-        const tx = txs[block.txid];
+        const tx = byTxid[block.txid];
         tx.blockTime = new Date(block.time).toISOString();
         tx.blockHash = block.hash;
         tx.blockHeight = block.height;
@@ -487,14 +488,33 @@ const getTransactions = (sess, whereClause, done) => {
         w.abort();
         return done(dbError(err, "txByTxid0"));
       }
+      const sum = {};
       for (const elem of ret) {
-        const bt = txs[elem.txid] = txs[elem.txid] || {};
-        const type = bt[elem.type] = bt[elem.type] || {};
+        const bt = sum[elem.txid] = sum[elem.txid] || { input: {}, output: {} };
+        const type = bt[elem.type] = bt[elem.type]
         const bal = type[elem.address] = type[elem.address] || {
             value: BigInt(0), spentcount: 0, unconfirmed: BigInt(0) };
         bal.value += BigInt(elem.value);
         bal.unconfirmed += BigInt(elem.unconfirmed);
         bal.spentcount += Number(elem.spentcount);
+      }
+      const convert = (inout) => {
+        const out = [];
+        for (const addr of Object.keys(inout)) {
+          const v = inout[addr];
+          out.push({
+            address: addr,
+            value: v.value.toString(),
+            unconfirmed: v.unconfirmed.toString(),
+            spentcount: v.spentcount,
+          });
+        }
+        return out;
+      };
+      for (const tx of txs) {
+        const bt = sum[tx.txid];
+        tx.input = convert(bt.input);
+        tx.output = convert(bt.output);
       }
     }));
   }).nThen((_) => {
@@ -520,7 +540,7 @@ const blockCoins1 = (sess, blockHash, limit, pgnum) => {
     return void complete(sess, err, {
       results: ret,
       prev: lim.prev,
-      next: lim.getNext(Object.keys(ret).length)
+      next: lim.getNext(ret.length)
     });
   });
 };
@@ -531,9 +551,7 @@ const txByTxid = (sess, txid) => {
       if (!err) { err = fourOhFour(sess, "no such txid", "txByTxid"); }
       return void complete(sess, err, null);
     }
-    const txid = Object.keys(ret)[0];
-    const tx = ret[txid];
-    tx.txid = txid;
+    const tx = ret[0];
     return void complete(sess, err, tx);
   });
 };
@@ -598,7 +616,7 @@ const addressCoins1 = (sess, address, limit, pgnum, nomine) => {
     if (!ret) {
       return void complete(sess, err);
     }
-    const next = lim.getNext(Object.keys(ret).length);
+    const next = lim.getNext(ret.length);
     return void complete(sess, null, {
       results: ret,
       prev: lim.prev + ((lim.prev && nomine) ? '?nomine=1' : ''),
