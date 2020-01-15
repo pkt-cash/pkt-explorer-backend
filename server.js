@@ -149,6 +149,7 @@ const limitFromPage = (limit, pgnum, path, max) => {
 const e = (str) => String(str).replace(/'/g, '_');
 
 const txCoins = (sess, txid, limit, pgnum) => {
+  if (!hashOk(sess, txid, 'txCoins')) { return; }
   const lim = limitFromPage(limit, pgnum, `/tx/${txid}/coins`, 500);
   const whereClause = `mintTxid = '${e(txid)}' OR spentTxid = '${e(txid)}'`;
   const filter = (rows) => {
@@ -176,6 +177,7 @@ const txCoins = (sess, txid, limit, pgnum) => {
 };
 
 const blockCoins = (sess, blockHash, limit, pgnum) => {
+  if (!hashOk(sess, blockHash, 'blockCoins')) { return; }
   const lim = limitFromPage(limit, pgnum, `/block/${blockHash}/coins`, 500);
   const subselect = `SELECT
       txid
@@ -295,6 +297,83 @@ const chain = (sess, up, limit, pgnum) => {
   });
 };
 
+
+const packetcryptStats = (sess, limit, pgnum) => {
+  const lim = limitFromPage(limit, pgnum, '/packetcrypt/stats', 50);
+  sess.ch.query(`SELECT
+      toDate(time) AS date,
+      any(pcVersion) pcVersion,
+      floor(avg(x) / log2(max(pcAnnDifficulty)) / 60 * 1024 * 8 / 2) as bitsPerSecond,
+      floor(avg(pcAnnCount * pcAnnDifficulty + pcBlkDifficulty) * 5 / 60) AS encryptionsPerSecond
+    FROM (
+      SELECT
+          time,
+          height,
+          pcVersion,
+          pcBlkDifficulty,
+          pcAnnDifficulty,
+          pcAnnCount,
+          pcAnnCount * log2(pcAnnDifficulty) AS x
+        FROM tbl_blk
+        ORDER BY height DESC
+    )
+    GROUP BY date
+    ORDER BY date DESC
+    LIMIT ${lim.limit}
+  `, (err, ret) => {
+    if (err || !ret) {
+      return void complete(sess, dbError(err, 'packetcryptStats'));
+    }
+    return void complete(sess, null, {
+      results: ret,
+      prev: lim.prev,
+      next: lim.getNext(ret.length)
+    });
+  });
+};
+
+const hashOk = (sess, hash, fn) => {
+  if (!/^[0-9a-f]{64}$/.test(hash)) {
+    complete(sess, fourOhFour(sess, "expecting a hash (32 lower case hex bytes)", fn));
+    return false;
+  }
+  return true;
+};
+
+const packetcryptBlock = (sess, hash) => {
+  if (!hashOk(sess, hash, "packetcryptBlock")) { return; }
+  let block;
+  nThen((w) => {
+    queryBlocks0(sess, 'packetcryptBlock', `hash = '${e(hash)}'`, w((ret) => {
+      block = ret[0];
+    }));
+  }).nThen((_) => {
+    // FORMAT JSONEachRow is probably needed because the WITH confuses it
+    sess.ch.query(`WITH (
+        SELECT
+            max(pcAnnDifficulty)
+          FROM tbl_blk
+          WHERE height < ${block.height} and height > ${block.height - 2016}
+          LIMIT 10
+        ) AS maxDiff
+      SELECT
+          floor(pcAnnCount * pcAnnDifficulty / maxDiff) * 1024 * 8  AS blockBits,
+          floor(pcAnnCount * pcAnnDifficulty + pcBlkDifficulty) * 5 AS blockEncryptions
+        FROM tbl_blk
+        WHERE hash = '${e(hash)}'
+        ORDER BY dateMs DESC
+        LIMIT 1
+        FORMAT JSONEachRow
+    `, (err, ret) => {
+      if (err || !ret) {
+        return void complete(sess, dbError(err, 'packetcryptBlock'));
+      }
+      return void complete(sess, null, ret[0]);
+    });
+  })
+
+};
+
 const richList = (sess, limit, pgnum) => {
   const lim = limitFromPage(limit, pgnum, `/stats/richlist`, 500);
   sess.ch.query(`SELECT
@@ -387,6 +466,7 @@ const queryTx = (sess, whereClause, then) => {
 };
 
 const txByBlockHash = (sess, blockHash) => {
+  if (!hashOk(sess, blockHash, 'txByBlockHash')) { return; }
   queryTx(sess, `txid IN (
     SELECT
       txid
@@ -523,6 +603,7 @@ const getTransactions = (sess, whereClause, done) => {
 };
 
 const blockCoins1 = (sess, blockHash, limit, pgnum) => {
+  if (!hashOk(sess, blockHash, 'blockCoins1')) { return; }
   const lim = limitFromPage(limit, pgnum, `/block/${blockHash}/coins`, 50);
   getTransactions(sess, `txid IN (
     SELECT
@@ -546,6 +627,7 @@ const blockCoins1 = (sess, blockHash, limit, pgnum) => {
 };
 
 const txByTxid = (sess, txid) => {
+  if (!hashOk(sess, txid, 'txByTxid')) { return; }
   getTransactions(sess, `txid = '${e(txid)}'`, (err, ret) => {
     if (!ret) {
       if (!err) { err = fourOhFour(sess, "no such txid", "txByTxid"); }
@@ -939,7 +1021,10 @@ const onReq = (ctx, req, res) => {
         const blockHash = parts[1];
         switch (parts[2]) {
           case 'coins': return void blockCoins1(sess, blockHash, parts[3], parts[4]);
-          case undefined: return void queryBlock(sess, `hash = '${e(blockHash)}'`);
+          case undefined: {
+            if (!hashOk(sess, blockHash, "onReq/queryBlock")) { return; }
+            return void queryBlock(sess, `hash = '${e(blockHash)}'`);
+          }
         }
       } break;
 
@@ -957,6 +1042,15 @@ const onReq = (ctx, req, res) => {
           case undefined: return void txByTxid(sess, txid);
         }
       } break;
+
+      case 'packetcrypt': {
+        switch (parts[1]) {
+          // /api/PKT/pkt/packetcrypt/stats/1/1
+          case 'stats': return void packetcryptStats(sess, parts[2], parts[3]);
+          // /api/PKT/pkt/packetcrypt/:blockHash
+          default: return void packetcryptBlock(sess, parts[1]);
+        }
+      }
     }
   }
 
