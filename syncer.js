@@ -64,6 +64,7 @@ type Context_t = {
   verifiers: Array<(()=>void)=>void>,
   recompute: bool,
   mut: {
+    mempool: Array<string>,
     headHash: string,
     headHeight: number
   }
@@ -134,7 +135,7 @@ type RpcBlock_t = {
 };
 type TxBlock_t = {
   tx: RpcTx_t,
-  block: RpcBlock_t
+  block: RpcBlock_t|null
 };
 
 // generated table types
@@ -772,6 +773,10 @@ const rpcRes = /*::<X>*/(
 ) /*:Rpc_Client_Rpc_t<X>*/ => {
   return (err, ret) => {
     if (err) {
+      if (/503 Too busy/.test(err.message)) {
+        // Let this one fall through and just let the retrier keep polling
+        return;
+      }
       done(err);
     } else if (!ret) {
       done(new Error("no result"));
@@ -791,7 +796,7 @@ const retrier = (doThis) => {
     //console.error("BTC: Retrying request...");
     dead = true;
     retrier(doThis);
-  }, 1000);
+  }, 5000);
   doThis((wrapped) => {
     return (...args) => {
       if (dead) { return; }
@@ -805,12 +810,6 @@ const retrier = (doThis) => {
 const rpcGetBlockByHash = (ctx, hash /*:string*/, done) => {
   retrier((ut) => {
     ctx.btc.getBlock(hash, true, true, ut(rpcRes((err, ret) => {
-      if (err && /503 Too busy/.test(err.message)) {
-        ctx.rpclog.debug("503 too busy, retrying in 10 seconds...");
-        return void setTimeout(() => {
-          rpcGetBlockByHash(ctx, hash, done);
-        }, 10000);
-      }
       if (!ret) { return void done(err); }
       done(null, (ret /*:RpcBlock_t*/));
     })));
@@ -822,6 +821,53 @@ const rpcGetBlockByHeight = (ctx, height /*:number*/, done) => {
     if (!ret) { return void done(err); }
     rpcGetBlockByHash(ctx, ret, done);
   }));
+};
+
+// getrawmempool
+const rpcGetMempool = (ctx, done) => {
+  retrier((ut) => {
+    ctx.btc.batch(() => {
+      ctx.btc.batchedCalls = {
+        jsonrpc: "1.0",
+        id: "pkt-explorer-backend",
+        method: "getrawmempool",
+        params: []
+      };
+    }, ut(rpcRes((err, ret) => {
+      if (!ret) { return void done(err); }
+      done(null, (ret /*:Array<string>*/));
+    })));
+  });
+};
+
+const rpcGetTransaction = (ctx, hash /*:string*/, done) => {
+  retrier((ut) => {
+    ctx.btc.getRawTransaction(hash, 1, ut(rpcRes((err, ret) => {
+      if (!ret) { return void done(err); }
+      done(null, ret);
+    })));
+  });
+};
+
+const getTransactionsForHashes = (ctx, hashes, done) => {
+  const transactions = [];
+  let nt = nThen;
+  console.error(`Getting [${hashes.length}] transactions`);
+  hashes.forEach((th) => {
+    nt = nt((w) => {
+      rpcGetTransaction(ctx, th, w((err, tx) => {
+        if (!tx) {
+          console.error(`Failed to get transaction [${th}] ` +
+            `[${String(err)}] will retry later...`);
+          return;
+        }
+        transactions.push(tx);
+      }));
+    }).nThen;
+  });
+  nt(() => {
+    done(transactions);
+  });
 };
 
 const BIG_230 = BigInt(1<<30);
@@ -856,9 +902,9 @@ const convertTxin = (
     spentTxid: tx.txid,
     spentTxinNum: txinNum,
 
-    spentBlockHash: block.hash,
-    spentHeight: block.height,
-    spentTime: block.time,
+    spentBlockHash: block ? block.hash : "",
+    spentHeight: block ? block.height : 0,
+    spentTime: block ? block.time : 0,
     spentSequence: txin.sequence,
 
     dateMs: dateMs,
@@ -869,10 +915,12 @@ const convertTxin = (
 const getCoinbase = (ctx, txBlock, txout, value) => {
   if (!('coinbase' in txBlock.tx.vin[0])) { return 0; }
   if (ctx.chain !== 'PKT') { return 1; }
+  const block = txBlock.block;
+  if (!block) { throw new Error("free coinbase transaction is not allowed"); }
   // special network steward payout stuff for PKT
   // detection of a network steward payment is done by looking for any
   // coinbase payment of precisely 51/256ths of the computed block reward.
-  const period = Math.floor(txBlock.block.height / 144000);
+  const period = Math.floor(block.height / 144000);
   let a = BigInt(1);
   let b = BigInt(1);
   for (let i = 0; i < period; i++) {
@@ -959,7 +1007,7 @@ const stateMapper = /*::<X>*/(field, sn, tempTable /*:Table_t<X>*/) => {
   }
 };
 
-const submitTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done) => {
+const dbInsertTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done) => {
   const txInputs /*:Array<Tables.TxSpent_t>*/ = [];
   const txOutputs /*:Array<Tables.TxMinted_t>*/ = [];
   const transactions /*:Array<Tables.tbl_tx_t>*/ = [];
@@ -983,10 +1031,14 @@ const submitTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done) => {
       if (err) { throw err; }
     }));
   }).nThen((w) => {
-    if (!txInputs.length) { return; }
+    // We can't insert txins right now because we don't consider the state of transactions being
+    // spent in mempool.
+    const txIns = txInputs.filter((txin) => txin.spentBlockHash);
+
+    if (!txIns.length) { return; }
     // We can't key off of the address because we don't know it, so we must do a table scan.
     const keyFields = [ coins.fields().mintTxid, coins.fields().mintIndex ];
-    ctx.ch.mergeUpdate(Table_TxSpent, txInputs, coins, keyFields, stateMapper, w((err) => {
+    ctx.ch.mergeUpdate(Table_TxSpent, txIns, coins, keyFields, stateMapper, w((err) => {
       if (err) { throw err; }
     }));
   }).nThen((_) => {
@@ -1209,12 +1261,44 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
         });
       });
     });
-    submitTransactions(ctx, txBlock, w());
+    dbInsertTransactions(ctx, txBlock, w());
   }).nThen((w) => {
     ctx.ch.insert(tbl_blk, dbBlocks, w((err) => {
       if (err) { throw err; }
     }));
   }).nThen((w) => {
+    done();
+  });
+};
+
+const checkMempool = (ctx, done) => {
+  let newTx = [];
+  let nextMempool = [];
+  let hasMempoolTx = false;
+  nThen((w) => {
+    rpcGetMempool(ctx, w((err, ret) => {
+      if (err || !ret) { throw err; }
+      newTx = ret.filter((x) => ctx.mut.mempool.indexOf(x) === -1);
+      nextMempool = ret;
+    }));
+  }).nThen((w) => {
+    if (!newTx.length) {
+      ctx.mut.mempool = nextMempool;
+      return;
+    }
+    getTransactionsForHashes(ctx, newTx, w((txs) => {
+      for (const tx of txs) {
+        hasMempoolTx = true
+        ctx.snclog.debug(`Adding mempool transaction [${tx.txid}]`);
+      }
+      dbInsertTransactions(ctx, txs.map((tx) => { return { tx: tx, block: null }; }), w(() => {
+        // Only log the transactions we actually got into the mempool
+        ctx.mut.mempool = ctx.mut.mempool.filter((x) => nextMempool.indexOf(x) > -1);
+        for (const tx of txs) { ctx.mut.mempool.push(tx.txid); }
+      }));
+    }));
+  }).nThen((w) => {
+    if (hasMempoolTx) { ctx.snclog.debug(`Mempool synced`); }
     done();
   });
 };
@@ -1228,17 +1312,37 @@ const syncChain = (ctx, force, done) => {
       return;
     }
     if (ctx.mut.headHash) { return; }
-    ctx.ch.query(`SELECT * FROM ${TIP_VIEW}`, w((err, ret) => {
-      if (err) {
-        ctx.snclog.error(err);
-        w.abort();
-        done();
-      } else if (ret && ret.length) {
-        ctx.mut.headHeight = ret[0].height;
-        ctx.mut.headHash = ret[0].hash;
-      }
-      // Fresh start, we need to sync everything
-    }));
+    nThen((w) => {
+      ctx.ch.query(`SELECT * FROM ${TIP_VIEW}`, w((err, ret) => {
+        if (err) {
+          ctx.snclog.error(err);
+          w.abort();
+          done();
+        } else if (ret && ret.length) {
+          ctx.mut.headHeight = ret[0].height;
+          ctx.mut.headHash = ret[0].hash;
+        }
+        // Fresh start, we need to sync everything
+      }));
+    }).nThen((w) => {
+      ctx.ch.query(`SELECT
+          mintTxid
+        FROM coins
+        WHERE bitShiftRight(state, 3) = ${COIN_STATE.mempool >> 3}
+      `, w((err, ret) => {
+        // CAUTION: This will return entries which were
+        // later updated and are nologer in the mempool
+        // For the purposes of populating the mempool, this doesn't much
+        // matter because these will all be cleared out next time we poll
+        // the mempool from the RPC.
+        if (err || !ret) {
+          ctx.snclog.error(err);
+          w.abort();
+          return done();
+        }
+        ctx.mut.mempool = ret;
+      }));
+    }).nThen(w());
   }).nThen((w) => {
     const again = () => {
       rpcGetBlockByHeight(ctx, ctx.mut.headHeight, w((err, ret) => {
@@ -1379,6 +1483,7 @@ const main = (config, argv) => {
     mut: {
       headHash: '',
       headHeight: 0,
+      mempool: []
     }
   }) /*:Context_t*/);
   nThen((w) => {
@@ -1386,13 +1491,22 @@ const main = (config, argv) => {
   }).nThen((w) => {
     if (ctx.recompute) { return; }
     const sync = argv.indexOf('--resync') > -1;
-    const again = () => {
-      syncChain(ctx, sync, w(() => {
+
+    let c = 0;
+    const cycle = () => {
+      nThen((w) => {
+        c++;
+        if (c % 5 && !sync) { return; }
+        syncChain(ctx, sync, w());
+      }).nThen((w) => {
+        checkMempool(ctx, w());
+      }).nThen((_) => {
         if (sync) { return; }
-        setTimeout(w(again), 5000);
-      }));
+        setTimeout(w(cycle), 1000);
+      }).nThen(w());
     };
-    again();
+    cycle();
+
   }).nThen((w) => {
     console.log(`Shutting down`);
   });
