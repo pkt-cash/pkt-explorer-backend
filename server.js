@@ -920,7 +920,7 @@ const addressCoins = (sess, address, limit, pgnum) => {
 
 const enabledChains = (sess) => {
   const out = [];
-  const path = sess.ctx.path['api'];
+  const path = sess.ctx.path;
   Object.keys(path).map((k) => {
     Object.keys(path[k]).forEach((kk) => {
       out.push({ chain: k, network: kk });
