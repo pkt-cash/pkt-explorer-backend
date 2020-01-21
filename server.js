@@ -324,6 +324,7 @@ const packetcryptStats = (sess, limit, pgnum) => {
     if (err || !ret) {
       return void complete(sess, dbError(err, 'packetcryptStats'));
     }
+    fixDates(ret, ['date']);
     return void complete(sess, null, {
       results: ret,
       prev: lim.prev,
@@ -721,6 +722,7 @@ const addressIncome1 = (sess, address, limit, pgnum) => {
     if (err || !ret) {
       return void complete(sess, dbError(err, "queryTx"));
     }
+    fixDates(ret, ['date']);
     complete(sess, null, {
       result: ret,
       prev: lim.prev,
