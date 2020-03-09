@@ -611,7 +611,7 @@ const getTransactions = (sess, whereClause, done) => {
       }).nThen((_) => {
         done();
       });
-    }, (_) => { });
+    }, w());
   }).nThen((_) => {
     if (savedError) {
       done(savedError)
