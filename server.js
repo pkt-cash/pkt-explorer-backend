@@ -550,7 +550,6 @@ const getTransactions = (sess, whereClause, done) => {
             if (failed) { return; }
             failed = true;
             w.abort();
-            console.log('getTransactions0');
             savedError = dbError(err, "getTransactions0");
             return done();
           }
@@ -577,7 +576,6 @@ const getTransactions = (sess, whereClause, done) => {
             if (failed) { return; }
             failed = true;
             w.abort();
-            console.log('getTransactions1');
             savedError = dbError(err, "getTransactions1");
             return done();
           }
