@@ -478,6 +478,10 @@ const txByBlockHash = (sess, blockHash) => {
   });
 };
 
+const Table_txids = ClickHouse.table({
+  txid: ClickHouse.types.FixedString(64),
+});
+
 const getTransactions = (sess, whereClause, done) => {
   let txs /*:Array<Tables.tbl_tx_t & {
     blockHash?: string,
@@ -487,6 +491,7 @@ const getTransactions = (sess, whereClause, done) => {
     output: Array<{ address: string, value: string, spentcount: number, unconfirmed: string }>,
   }>*/;
   const byTxid = {};
+  let savedError;
   nThen((w) => {
     sess.ch.query(`SELECT
         *
@@ -503,103 +508,118 @@ const getTransactions = (sess, whereClause, done) => {
     }));
   }).nThen((w) => {
     if (txs.length === 0) { return; }
+    const txids = txs.map((x) => ({ txid: x.txid }));
+    const ch = sess.ch.withSession();
     // In this case, repeating ourselves with a WHERE shaves 100ms off the query
-    const inclause = `(${txs.map(x => `'${e(x.txid)}'`).join(',')})`;
-    let failed = false;
-    sess.ch.query(`
-      SELECT
-          time,
-          hash,
-          height,
-          blktx.txid
-        FROM (
+    ch.withTempTable(Table_txids, txids, (ch, tempTable, done) => {
+      let failed = false;
+      nThen((w) => {
+        ch.query(`
           SELECT
-              *
-            FROM tbl_blkTx
-            WHERE txid IN ${inclause}
-            ORDER BY dateMs DESC
-            LIMIT 1 BY txid
-        ) AS blktx
-        ALL INNER JOIN (
-          SELECT
-              *
-            FROM tbl_blk
-            WHERE hash IN (
+              time,
+              hash,
+              height,
+              blktx.txid
+            FROM (
               SELECT
-                  blockHash
+                  *
                 FROM tbl_blkTx
-                WHERE txid IN ${inclause}
+                WHERE txid IN (SELECT * FROM ${tempTable.name()})
                 ORDER BY dateMs DESC
                 LIMIT 1 BY txid
-            )
+            ) AS blktx
+            ALL INNER JOIN (
+              SELECT
+                  *
+                FROM tbl_blk
+                WHERE hash IN (
+                  SELECT
+                      blockHash
+                    FROM tbl_blkTx
+                    WHERE txid IN (SELECT * FROM ${tempTable.name()})
+                    ORDER BY dateMs DESC
+                    LIMIT 1 BY txid
+                )
+                ORDER BY dateMs DESC
+                LIMIT 1 BY hash
+            ) AS blk ON blktx.blockHash = blk.hash
             ORDER BY dateMs DESC
-            LIMIT 1 BY hash
-        ) AS blk ON blktx.blockHash = blk.hash
-        ORDER BY dateMs DESC
-        LIMIT 1 BY txid
-    `, w((err, ret) => {
-      if (err || !ret) {
-        if (failed) { return; }
-        failed = true;
-        w.abort();
-        return done(dbError(err, "txByTxid0"));
+            LIMIT 1 BY txid
+        `, w((err, ret) => {
+          if (err || !ret) {
+            if (failed) { return; }
+            failed = true;
+            w.abort();
+            console.log('getTransactions0');
+            savedError = dbError(err, "getTransactions0");
+            return done();
+          }
+          for (const block of ret) {
+            const tx = byTxid[block.txid];
+            tx.blockTime = new Date(block.time).toISOString();
+            tx.blockHash = block.hash;
+            tx.blockHeight = block.height;
+          }
+        }));
+      }).nThen((w) => {
+        ch.query(`SELECT
+            txid,
+            type,
+            address,
+            spentcount,
+            multiIf(spent > 0, spent, burned > 0, burned, received) AS value,
+            unconfirmed
+          FROM txview
+          FINAL
+          WHERE txid IN (SELECT * FROM ${tempTable.name()})
+        `, w((err, ret) => {
+          if (err || !ret) {
+            if (failed) { return; }
+            failed = true;
+            w.abort();
+            console.log('getTransactions1');
+            savedError = dbError(err, "getTransactions1");
+            return done();
+          }
+          const sum = {};
+          for (const elem of ret) {
+            const bt = sum[elem.txid] = sum[elem.txid] || { input: {}, output: {} };
+            const type = bt[elem.type] = bt[elem.type]
+            const bal = type[elem.address] = type[elem.address] || {
+                value: BigInt(0), spentcount: 0, unconfirmed: BigInt(0) };
+            bal.value += BigInt(elem.value);
+            bal.unconfirmed += BigInt(elem.unconfirmed);
+            bal.spentcount += Number(elem.spentcount);
+          }
+          const convert = (inout) => {
+            const out = [];
+            for (const addr of Object.keys(inout)) {
+              const v = inout[addr];
+              out.push({
+                address: addr,
+                value: v.value.toString(),
+                unconfirmed: v.unconfirmed.toString(),
+                spentcount: v.spentcount,
+              });
+            }
+            return out;
+          };
+          for (const tx of txs) {
+            const bt = sum[tx.txid];
+            tx.input = convert(bt.input);
+            tx.output = convert(bt.output);
+          }
+        }));
+      }).nThen((_) => {
+        done();
+      });
+    }, (_) => {
+      if (savedError) {
+        done(savedError)
+      } else {
+        done(null, txs);
       }
-      for (const block of ret) {
-        const tx = byTxid[block.txid];
-        tx.blockTime = new Date(block.time).toISOString();
-        tx.blockHash = block.hash;
-        tx.blockHeight = block.height;
-      }
-    }));
-
-    sess.ch.query(`SELECT
-        txid,
-        type,
-        address,
-        spentcount,
-        multiIf(spent > 0, spent, burned > 0, burned, received) AS value,
-        unconfirmed
-      FROM txview
-      FINAL
-      WHERE txid IN ${inclause}
-    `, w((err, ret) => {
-      if (err || !ret) {
-        if (failed) { return; }
-        failed = true;
-        w.abort();
-        return done(dbError(err, "txByTxid0"));
-      }
-      const sum = {};
-      for (const elem of ret) {
-        const bt = sum[elem.txid] = sum[elem.txid] || { input: {}, output: {} };
-        const type = bt[elem.type] = bt[elem.type]
-        const bal = type[elem.address] = type[elem.address] || {
-            value: BigInt(0), spentcount: 0, unconfirmed: BigInt(0) };
-        bal.value += BigInt(elem.value);
-        bal.unconfirmed += BigInt(elem.unconfirmed);
-        bal.spentcount += Number(elem.spentcount);
-      }
-      const convert = (inout) => {
-        const out = [];
-        for (const addr of Object.keys(inout)) {
-          const v = inout[addr];
-          out.push({
-            address: addr,
-            value: v.value.toString(),
-            unconfirmed: v.unconfirmed.toString(),
-            spentcount: v.spentcount,
-          });
-        }
-        return out;
-      };
-      for (const tx of txs) {
-        const bt = sum[tx.txid];
-        tx.input = convert(bt.input);
-        tx.output = convert(bt.output);
-      }
-    }));
-  }).nThen((_) => {
-    done(null, txs);
+    });
   });
 };
 
