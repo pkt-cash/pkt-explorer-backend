@@ -611,14 +611,14 @@ const getTransactions = (sess, whereClause, done) => {
       }).nThen((_) => {
         done();
       });
-    }, (_) => {
-      if (savedError) {
-        done(savedError)
-      } else {
-        done(null, txs);
-      }
-    });
-  });
+    }, (_) => { });
+  }).nThen((_) => {
+    if (savedError) {
+      done(savedError)
+    } else {
+      done(null, txs);
+    }
+  })
 };
 
 const blockCoins1 = (sess, blockHash, limit, pgnum) => {
