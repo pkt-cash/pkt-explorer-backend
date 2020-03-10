@@ -512,7 +512,6 @@ const getTransactions = (sess, whereClause, done) => {
     const ch = sess.ch.withSession();
     // In this case, repeating ourselves with a WHERE shaves 100ms off the query
     ch.withTempTable(Table_txids, txids, (ch, tempTable, done) => {
-      let failed = false;
       nThen((w) => {
         ch.query(`
           SELECT
@@ -547,8 +546,6 @@ const getTransactions = (sess, whereClause, done) => {
             LIMIT 1 BY txid
         `, w((err, ret) => {
           if (err || !ret) {
-            if (failed) { return; }
-            failed = true;
             w.abort();
             savedError = dbError(err, "getTransactions0");
             return done();
@@ -573,8 +570,6 @@ const getTransactions = (sess, whereClause, done) => {
           WHERE txid IN (SELECT * FROM ${tempTable.name()})
         `, w((err, ret) => {
           if (err || !ret) {
-            if (failed) { return; }
-            failed = true;
             w.abort();
             savedError = dbError(err, "getTransactions1");
             return done();
