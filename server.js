@@ -139,6 +139,8 @@ const limitFromPage = (limit, pgnum, path, max) => {
   return {
     limit: `${maxLimit * (pageNumber - 1)}, ${maxLimit}`,
     prev: prev,
+    maxLimit,
+    pageNumber,
     getNext: (rowsLength) => {
       if (rowsLength < maxLimit) { return ""; }
       return `${path}/${maxLimit}/${pageNumber + 1}`;
@@ -721,25 +723,51 @@ const addressCoins1 = (sess, address, limit, pgnum, nomine) => {
   });
 };
 
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
 const addressIncome1 = (sess, address, limit, pgnum) => {
   const lim = limitFromPage(limit, pgnum, `/address/${address}/income`, 100);
+
+  // If there are any days missing, we need to fill them in with zeros.
+  // The database doesn't know what it doesn't know, but when we're asking for
+  // income, nothing means zero.
+  //
+  // So we're going to start with today and count back lim.maxLimit * lim.pageNumber
+  // and then start populating the output with results until we have populated maxLimit
+  // results. If the db has a result then we use it, otherwise we enter zero.
+  const now = +new Date();
+  let t = now - (lim.maxLimit * (lim.pageNumber - 1) * MS_PER_DAY);
+  const maxDate = new Date(t).toISOString().replace(/T.*$/, '');
+  const out = [];
+  for (let i = 0; i < lim.maxLimit; i++) {
+    const ts = (new Date(t)).toISOString().replace(/T.*$/, 'T00:00:00.000Z')
+    out.push({ date: ts, received: "0" });
+    t -= MS_PER_DAY;
+  }
+  const minDate = new Date(t + MS_PER_DAY).toISOString().replace(/T.*$/, '');
+
   sess.ch.query(`SELECT
       date,
       sum(received) AS received
     FROM addrincome
-    WHERE address = '${e(address)}'
+    WHERE
+      address = '${e(address)}' AND
+      date >= toDate('${minDate}') AND
+      date <= toDate('${maxDate}')
     GROUP BY address, date
     ORDER BY date DESC
-    LIMIT ${lim.limit}
   `, (err, ret) => {
     if (err || !ret) {
       return void complete(sess, dbError(err, "queryTx"));
     }
     fixDates(ret, ['date']);
+    const resultTbl = {};
+    for (const el of ret) { resultTbl[el.date] = el.received; }
+    for (const el of out) { el.received = resultTbl[el.date] || "0"; }
     complete(sess, null, {
-      result: ret,
+      result: out,
       prev: lim.prev,
-      next: lim.getNext(ret.length)
+      next: lim.getNext(out.length)
     });
   });
 };
