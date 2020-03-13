@@ -409,7 +409,8 @@ const addressBalance = (sess, address) => {
       confirmedReceived - spent - burned          AS balance,
       sumIf(value, bitShiftRight(state, 3) == 3)  AS spent,
       sumIf(value, bitShiftRight(state, 3) == 4)  AS burned,
-      count()                                     AS recvCount,
+      countIf(coinbase == 0)                      AS recvCount,
+      countIf(coinbase > 0)                       AS mineCount,
       countIf(bitShiftRight(state, 3) == 3)       AS spentCount,
       sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0))  AS mined24
 
