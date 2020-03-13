@@ -519,6 +519,7 @@ const dbCreateAddrIncome = (ctx, done) => {
   const selectClause = (state) => `SELECT
       address,
       toDate(mintTime) AS date,
+      coinbase,
       ${fields.map((k) => (
         `value * (
           (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.add[k].toString()} ) != 0) -
@@ -546,11 +547,12 @@ const dbCreateAddrIncome = (ctx, done) => {
     ctx.ch.modify(`CREATE TABLE addrincome (
         address        String,
         date           Date,
+        coinbase       Int8,
         ${fields.map((f) => (
           `${f} SimpleAggregateFunction(sum, Int64)`
         )).join(', ')}
       ) ENGINE AggregatingMergeTree()
-      ORDER BY (address, date)
+      ORDER BY (address, date, coinbase)
     `, e(w));
   }).nThen((w) => {
     // We mask the state here so that all states are from previous "nothing"

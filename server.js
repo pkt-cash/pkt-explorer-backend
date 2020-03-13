@@ -489,8 +489,8 @@ const getTransactions = (sess, whereClause, done) => {
     blockHash?: string,
     blockTime?: string,
     blockHeight?: number,
-    input: Array<{ address: string, value: string, spentcount: number, unconfirmed: string }>,
-    output: Array<{ address: string, value: string, spentcount: number, unconfirmed: string }>,
+    input: Array<{ address: string, value: string, spentcount: number, unconfirmed: bool }>,
+    output: Array<{ address: string, value: string, spentcount: number, unconfirmed: bool }>,
   }>*/;
   const byTxid = {};
   let savedError;
@@ -590,13 +590,15 @@ const getTransactions = (sess, whereClause, done) => {
             const out = [];
             for (const addr of Object.keys(inout)) {
               const v = inout[addr];
+              let value = (v.value === BigInt(0)) ? v.unconfirmed.toString() : v.value.toString()
               out.push({
                 address: addr,
-                value: v.value.toString(),
-                unconfirmed: v.unconfirmed.toString(),
+                value: value.toString(),
+                unconfirmed: v.unconfirmed !== BigInt(0),
                 spentcount: v.spentcount,
               });
             }
+            out.sort((a,b) => (Number(b.value) - Number(a.value)));
             return out;
           };
           for (const tx of txs) {
@@ -613,6 +615,7 @@ const getTransactions = (sess, whereClause, done) => {
     if (savedError) {
       done(savedError)
     } else {
+      txs.sort((a,b) => (+new Date(b.firstSeen)) - (+new Date(a.firstSeen)));
       done(null, txs);
     }
   })
