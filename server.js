@@ -694,8 +694,14 @@ const dedupCoins = (coins) => {
   ));
 };
 
-const addressCoins1 = (sess, address, limit, pgnum, nomine) => {
+const addressCoins1 = (sess, address, limit, pgnum, mining) => {
   const lim = limitFromPage(limit, pgnum, `/address/${address}/coins`, 50);
+  let mc = 'AND coinbase = 0';
+  if (mining === 'only') {
+    mc = 'AND coinbase > 0';
+  } else if (mining === 'included') {
+    mc = '';
+  }
   getTransactions(sess, `txid IN (
     SELECT
         if(_spentTime > _mintTime, _spentTxid, mintTxid) AS txid
@@ -708,7 +714,7 @@ const addressCoins1 = (sess, address, limit, pgnum, nomine) => {
           FROM coins
           WHERE
             address = '${e(address)}'
-            ${(nomine) ? `AND coinbase = 0` : ''}
+            ${mc}
           GROUP BY mintTxid, mintIndex
           ORDER BY if(_spentTime > _mintTime, _spentTime, _mintTime) DESC
           LIMIT ${lim.limit}
@@ -720,16 +726,22 @@ const addressCoins1 = (sess, address, limit, pgnum, nomine) => {
     const next = lim.getNext(ret.length);
     return void complete(sess, null, {
       results: ret,
-      prev: lim.prev + ((lim.prev && nomine) ? '?nomine=1' : ''),
-      next: next + ((next && nomine) ? '?nomine=1' : '')
+      prev: lim.prev + ((lim.prev && mining) ? `?mining=${mining}` : ''),
+      next: next + ((next && mining) ? `?mining=${mining}` : '')
     });
   });
 };
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-const addressIncome1 = (sess, address, limit, pgnum) => {
+const addressIncome1 = (sess, address, limit, pgnum, mining) => {
   const lim = limitFromPage(limit, pgnum, `/address/${address}/income`, 100);
+  let mc = 'AND coinbase > 0';
+  if (mining === 'excluded') {
+    mc = 'AND coinbase = 0';
+  } else if (mining === 'included') {
+    mc = '';
+  }
 
   // If there are any days missing, we need to fill them in with zeros.
   // The database doesn't know what it doesn't know, but when we're asking for
@@ -757,6 +769,7 @@ const addressIncome1 = (sess, address, limit, pgnum) => {
       address = '${e(address)}' AND
       date >= toDate('${minDate}') AND
       date <= toDate('${maxDate}')
+      ${mc}
     GROUP BY address, date
     ORDER BY date DESC
   `, (err, ret) => {
@@ -767,10 +780,11 @@ const addressIncome1 = (sess, address, limit, pgnum) => {
     const resultTbl = {};
     for (const el of ret) { resultTbl[el.date] = el.received; }
     for (const el of out) { el.received = resultTbl[el.date] || "0"; }
+    const next = lim.getNext(out.length);
     complete(sess, null, {
       result: out,
-      prev: lim.prev,
-      next: lim.getNext(out.length)
+      prev: lim.prev + ((lim.prev && mining) ? `?mining=${mining}` : ''),
+      next: next + ((next && mining) ? `?mining=${mining}` : '')
     });
   });
 };
@@ -1058,8 +1072,8 @@ const onReq = (ctx, req, res) => {
           // /api/PKT/pkt/address/:addr/
           case undefined: return void address1(sess, addr);
           // /api/PKT/pkt/address/:addr/coins
-          case 'coins': return void addressCoins1(sess, addr, parts[3], parts[4], query.nomine);
-          case 'income': return void addressIncome1(sess, addr, parts[3], parts[4]);
+          case 'coins': return void addressCoins1(sess, addr, parts[3], parts[4], query.mining);
+          case 'income': return void addressIncome1(sess, addr, parts[3], parts[4], query.mining);
         }
       } break;
 
