@@ -704,21 +704,30 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
   }
   getTransactions(sess, `txid IN (
     SELECT
-        if(_spentTime > _mintTime, _spentTxid, mintTxid) AS txid
+        txid,time
       FROM (
         SELECT
-            argMax(spentTxid, dateMs)  AS _spentTxid,
-            argMax(mintTime, dateMs)   AS _mintTime,
-            argMax(spentTime, dateMs)  AS _spentTime,
-            mintTxid
+            argMax(mintTime, dateMs)    AS time,
+            mintTxid                    AS txid
           FROM coins
           WHERE
             address = '${e(address)}'
             ${mc}
-          GROUP BY mintTxid, mintIndex
-          ORDER BY if(_spentTime > _mintTime, _spentTime, _mintTime) DESC
-          LIMIT ${lim.limit}
+          GROUP BY mintTxid
+          HAVING argMax(spentTime, dateMs) = 0
+          ORDER BY time DESC
+        UNION ALL SELECT
+            argMax(spentTime, dateMs)   AS time,
+            spentTxid                   AS txid
+          FROM coins
+          WHERE
+            AND spentTime > 0
+            AND address = '${e(address)}'
+            ${mc}
+          GROUP BY spentTxid, spentTime
+          ORDER BY time DESC
       )
+      LIMIT ${lim.limit}
   )`, (err, ret) => {
     if (!ret) {
       return void complete(sess, err);
