@@ -704,7 +704,7 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
   }
   getTransactions(sess, `txid IN (
     SELECT
-        txid,time
+        txid
       FROM (
         SELECT
             argMax(mintTime, dateMs)    AS time,
