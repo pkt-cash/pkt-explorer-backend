@@ -721,7 +721,7 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
             spentTxid                   AS txid
           FROM coins
           WHERE
-            AND spentTime > 0
+            spentTime > 0
             AND address = '${e(address)}'
             ${mc}
           GROUP BY spentTxid, spentTime
