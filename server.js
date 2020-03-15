@@ -343,6 +343,10 @@ const hashOk = (sess, hash, fn) => {
   return true;
 };
 
+// This calculation is an estimate, these numbers need to be tuned to match reality.
+const BITS_DIVISOR = 18;
+const ENCRYPTIONS_DIVISOR = 32;
+
 const packetcryptBlock = (sess, hash) => {
   if (!hashOk(sess, hash, "packetcryptBlock")) { return; }
   let block;
@@ -360,8 +364,10 @@ const packetcryptBlock = (sess, hash) => {
           LIMIT 10
         ) AS maxDiff
       SELECT
-          floor(pcAnnCount * pcAnnDifficulty / maxDiff) * 1024 * 8  AS blockBits,
-          floor(pcAnnCount * pcAnnDifficulty + pcBlkDifficulty) * 5 AS blockEncryptions
+          floor(pcAnnCount * pcAnnDifficulty / maxDiff) * 1024 * 8 / ${BITS_DIVISOR}
+            AS blockBits,
+          floor(pcAnnCount * pcAnnDifficulty + pcBlkDifficulty) * 5 / ${ENCRYPTIONS_DIVISOR}
+            AS blockEncryptions
         FROM tbl_blk
         WHERE hash = '${e(hash)}'
         ORDER BY dateMs DESC
@@ -760,8 +766,8 @@ const addressIncome1 = (sess, address, limit, pgnum, mining) => {
   // So we're going to start with today and count back lim.maxLimit * lim.pageNumber
   // and then start populating the output with results until we have populated maxLimit
   // results. If the db has a result then we use it, otherwise we enter zero.
-  const now = +new Date();
-  let t = now - (lim.maxLimit * (lim.pageNumber - 1) * MS_PER_DAY);
+  const begin = +new Date() - MS_PER_DAY;
+  let t = begin - (lim.maxLimit * (lim.pageNumber - 1) * MS_PER_DAY);
   const maxDate = new Date(t).toISOString().replace(/T.*$/, '');
   const out = [];
   for (let i = 0; i < lim.maxLimit; i++) {
