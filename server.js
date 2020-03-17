@@ -781,14 +781,14 @@ const addressIncome1 = (sess, address, limit, pgnum, mining) => {
   // results. If the db has a result then we use it, otherwise we enter zero.
   const begin = +new Date() - MS_PER_DAY;
   let t = begin - (lim.maxLimit * (lim.pageNumber - 1) * MS_PER_DAY);
-  const maxDate = new Date(t).toISOString().replace(/T.*$/, '');
+  const maxDate = new Date(t + MS_PER_DAY * 3).toISOString().replace(/T.*$/, '');
   const out = [];
   for (let i = 0; i < lim.maxLimit; i++) {
     const ts = (new Date(t)).toISOString().replace(/T.*$/, 'T00:00:00.000Z')
     out.push({ date: ts, received: "0" });
     t -= MS_PER_DAY;
   }
-  const minDate = new Date(t + MS_PER_DAY).toISOString().replace(/T.*$/, '');
+  const minDate = new Date(t - MS_PER_DAY * 3).toISOString().replace(/T.*$/, '');
 
   sess.ch.query(`SELECT
       date,
