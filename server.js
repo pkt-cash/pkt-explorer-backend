@@ -11,6 +11,7 @@ const Bech32 = require('bech32');
 
 const ClickHouse = require('./lib/clickhouse.js');
 const Log = require('./lib/log.js');
+const Rewards = require('./lib/rewards.js');
 
 const Config = require('./config.js');
 
@@ -1039,6 +1040,24 @@ const isValid = (sess, input) => {
   return void complete(sess, null, result);
 };
 
+const statsCoins = (sess, num) => {
+  if (!isCannonicalPositiveIntOrZero(num)) {
+    return void complete(sess, fourOhFour(sess, "expecting a block number", 'statsCoins'));
+  }
+  let r = Rewards.pkt;
+  if (sess.config.blockRewards) {
+    r = Rewards[sess.config.blockRewards];
+    if (typeof(r) !== 'function') {
+      return void complete(sess, {
+        code: 500,
+        error: "blockReward model [" + sess.config.blockRewards + "] does not exist",
+        fn: "onReq"
+      });
+    }
+  }
+  return void complete(sess, null, r(Number(num)));
+}
+
 const onReq = (ctx, req, res) => {
   ctx.log.debug(req.method + ' ' + req.url);
   const sess = {
@@ -1153,6 +1172,9 @@ const onReq = (ctx, req, res) => {
       // /api/PKT/pkt/stats/richlist
       case 'richlist': return void richList(sess, parts[2], parts[3]);
       case 'daily-transactions': return void dailyTransactions(sess);
+
+      // /api/PKT/pkt/stats/coins/:blocknum
+      case 'coins': return statsCoins(sess, parts[2]);
     } break;
 
     // /api/PKT/pkt/address/
