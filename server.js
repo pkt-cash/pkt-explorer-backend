@@ -809,7 +809,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining) => {
     const resultTbl = {};
     for (const el of ret) { resultTbl[el.date] = el.received; }
     for (const el of out) { el.received = resultTbl[el.date] || "0"; }
-    const next = lim.getNext(out.length);
+    const next = lim.getNext(true);
     complete(sess, null, {
       result: out,
       prev: lim.prev + ((lim.prev && mining) ? `?mining=${mining}` : ''),
