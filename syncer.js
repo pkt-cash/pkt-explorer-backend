@@ -532,7 +532,7 @@ const dbCreateAddrIncome = (ctx, done) => {
     nThen((w) => {
       ctx.ch.modify(`DROP TABLE IF EXISTS addrincome`, e(w));
     }).nThen((w) => {
-      ctx.ch.modify(`DROP TABLE IF EXISTS addrincome_mv_recv`, e(w));
+      ctx.ch.modify(`DROP TABLE IF EXISTS addrincome_mv`, e(w));
     }).nThen(w());
   }).nThen((w) => {
     ctx.ch.query(`SELECT * FROM addrincome LIMIT 1`, w((err, _) => {
@@ -634,6 +634,7 @@ const dbCreateTxview = (ctx, done) => {
         if (err) { return void error(err, w); }
     }));
   }).nThen((w) => {
+    // 0b111000 == discard the previous state, keep current only
     ctx.ch.modify(`INSERT INTO txview
       ${select('mintTxid', 'output', `bitAnd(${0b111000}, state)`)}
       FROM ${coins.name()}
