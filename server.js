@@ -141,9 +141,13 @@ const limitFromPage = (limit, pgnum, path, max) => {
     prev: prev,
     maxLimit,
     pageNumber,
-    getNext: (rowsLength) => {
-      if (rowsLength < maxLimit) { return ""; }
-      return `${path}/${maxLimit}/${pageNumber + 1}`;
+    getNext: (rowsLength /*:number|bool*/) => {
+      if (rowsLength === false) {
+      } else if (typeof(rowsLength) === 'number' && rowsLength < maxLimit) {
+      } else {
+        return `${path}/${maxLimit}/${pageNumber + 1}`;
+      }
+      return "";
     }
   };
 };
@@ -491,15 +495,19 @@ const Table_txids = ClickHouse.table({
   txid: ClickHouse.types.FixedString(64),
 });
 
+/*::
+type GetTransactions_Tx_t = Tables.tbl_tx_t & {
+  blockHash?: string,
+  blockTime?: string,
+  blockHeight?: number,
+  input: Array<{ address: string, value: string, spentcount: number, unconfirmed: bool }>,
+  output: Array<{ address: string, value: string, spentcount: number, unconfirmed: bool }>,
+};
+*/
+
 const getTransactions = (sess, whereClause, done) => {
-  let txs /*:Array<Tables.tbl_tx_t & {
-    blockHash?: string,
-    blockTime?: string,
-    blockHeight?: number,
-    input: Array<{ address: string, value: string, spentcount: number, unconfirmed: bool }>,
-    output: Array<{ address: string, value: string, spentcount: number, unconfirmed: bool }>,
-  }>*/;
-  const byTxid = {};
+  let txs /*:Array<GetTransactions_Tx_t>*/ = [];
+  const byTxid /*:{[string]: GetTransactions_Tx_t}*/ = {};
   let savedError;
   nThen((w) => {
     sess.ch.query(`SELECT
@@ -511,8 +519,11 @@ const getTransactions = (sess, whereClause, done) => {
         return void done(dbError(err, "queryTx"));
       } else {
         fixDates(ret, ['firstSeen']);
-        txs = ret;
-        for (const tx of txs) { byTxid[tx.txid] = tx; }
+        for (const tx of ret) {
+          if (tx.txid in byTxid) { continue; }
+          byTxid[tx.txid] = tx;
+          txs.push(tx);
+        }
       }
     }));
   }).nThen((w) => {
@@ -721,7 +732,6 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
             address = '${e(address)}'
             ${mc}
           GROUP BY mintTxid
-          HAVING argMax(spentTime, dateMs) = 0
           ORDER BY time DESC
         UNION ALL SELECT
             argMax(spentTime, dateMs)   AS time,
@@ -739,7 +749,10 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
     if (!ret) {
       return void complete(sess, err);
     }
-    const next = lim.getNext(ret.length);
+    // We can't rely on the length of the output really at all because
+    // we're doing an UNION ALL so we'll just assume there are more pages
+    // any time it is non-zero.
+    const next = lim.getNext(ret.length > 0);
     return void complete(sess, null, {
       results: ret,
       prev: lim.prev + ((lim.prev && mining) ? `?mining=${mining}` : ''),
