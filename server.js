@@ -741,7 +741,6 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
           WHERE
             spentTime > 0
             AND address = '${e(address)}'
-            ${mc}
           GROUP BY spentTxid, spentTime
           ORDER BY time DESC
       )
