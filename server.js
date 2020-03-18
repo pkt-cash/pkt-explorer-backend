@@ -635,7 +635,7 @@ const getTransactions = (sess, whereClause, done) => {
       done(savedError)
     } else {
       txs.sort((a,b) => (+new Date(b.firstSeen)) - (+new Date(a.firstSeen)));
-      done(null, txs);
+      done(null, txs.length ? txs : null);
     }
   })
 };
