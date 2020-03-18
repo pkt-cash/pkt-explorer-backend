@@ -1048,7 +1048,7 @@ const statsCoins = (sess, num) => {
       FINAL
       ORDER BY height DESC
       LIMIT 1
-    )`, w((err, ret) => {
+    `, w((err, ret) => {
       if (err || !ret) {
         return void complete(sess, dbError(err, "statsCoins"));
       }
