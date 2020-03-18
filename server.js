@@ -1040,21 +1040,37 @@ const isValid = (sess, input) => {
 };
 
 const statsCoins = (sess, num) => {
-  if (!isCannonicalPositiveIntOrZero(num)) {
-    return void complete(sess, fourOhFour(sess, "expecting a block number", 'statsCoins'));
-  }
-  let r = Rewards.pkt;
-  if (sess.config.blockRewards) {
-    r = Rewards[sess.config.blockRewards];
-    if (typeof(r) !== 'function') {
-      return void complete(sess, {
-        code: 500,
-        error: "blockReward model [" + sess.config.blockRewards + "] does not exist",
-        fn: "onReq"
-      });
+  nThen((w) => {
+    if (typeof(num) !== 'undefined') { return; }
+    sess.ch.query(`SELECT
+        height
+      FROM int_mainChain
+      FINAL
+      ORDER BY height DESC'}
+      LIMIT 1
+    )`, w((err, ret) => {
+      if (err || !ret) {
+        return void complete(sess, dbError(err, "statsCoins"));
+      }
+      num = ret[0].height;
+    }));
+  }).nThen((w) => {
+    if (!isCannonicalPositiveIntOrZero(num)) {
+      return void complete(sess, fourOhFour(sess, "expecting a block number", 'statsCoins'));
     }
-  }
-  return void complete(sess, null, r(Number(num)));
+    let r = Rewards.pkt;
+    if (sess.config.blockRewards) {
+      r = Rewards[sess.config.blockRewards];
+      if (typeof(r) !== 'function') {
+        return void complete(sess, {
+          code: 500,
+          error: "blockReward model [" + sess.config.blockRewards + "] does not exist",
+          fn: "onReq"
+        });
+      }
+    }
+    return void complete(sess, null, r(Number(num)));
+  });
 }
 
 const onReq = (ctx, req, res) => {
