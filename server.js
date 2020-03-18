@@ -1046,7 +1046,7 @@ const statsCoins = (sess, num) => {
         height
       FROM int_mainChain
       FINAL
-      ORDER BY height DESC'}
+      ORDER BY height DESC
       LIMIT 1
     )`, w((err, ret) => {
       if (err || !ret) {
