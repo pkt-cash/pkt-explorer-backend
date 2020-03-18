@@ -635,7 +635,7 @@ const getTransactions = (sess, whereClause, done) => {
       done(savedError)
     } else {
       txs.sort((a,b) => (+new Date(b.firstSeen)) - (+new Date(a.firstSeen)));
-      done(null, txs.length ? txs : null);
+      done(null, txs);
     }
   })
 };
@@ -652,7 +652,7 @@ const blockCoins1 = (sess, blockHash, limit, pgnum) => {
   ORDER BY coinbase DESC, txid
   LIMIT ${lim.limit}
   `, (err, ret) => {
-    if (!ret) {
+    if (!ret || !ret.length) {
       if (!err) { err = fourOhFour(sess, "no such block", "blockCoins1"); }
       return void complete(sess, err, null);
     }
@@ -667,7 +667,7 @@ const blockCoins1 = (sess, blockHash, limit, pgnum) => {
 const txByTxid = (sess, txid) => {
   if (!hashOk(sess, txid, 'txByTxid')) { return; }
   getTransactions(sess, `txid = '${e(txid)}'`, (err, ret) => {
-    if (!ret) {
+    if (!ret || !ret.length) {
       if (!err) { err = fourOhFour(sess, "no such txid", "txByTxid"); }
       return void complete(sess, err, null);
     }
