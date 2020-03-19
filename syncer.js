@@ -1291,7 +1291,7 @@ const checkMempool = (ctx, done) => {
     }
     getTransactionsForHashes(ctx, newTx, w((txs) => {
       for (const tx of txs) {
-        hasMempoolTx = true
+        hasMempoolTx = true;
         ctx.snclog.debug(`Adding mempool transaction [${tx.txid}]`);
       }
       dbInsertTransactions(ctx, txs.map((tx) => { return { tx: tx, block: null }; }), w(() => {

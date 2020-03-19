@@ -155,6 +155,14 @@ const limitFromPage = (limit, pgnum, path, max) => {
 
 const e = (str) => String(str).replace(/'/g, '_');
 
+const hashOk = (sess, hash, fn) => {
+  if (!/^[0-9a-f]{64}$/.test(hash)) {
+    complete(sess, fourOhFour(sess, "expecting a hash (32 lower case hex bytes)", fn));
+    return false;
+  }
+  return true;
+};
+
 const txCoins = (sess, txid, limit, pgnum) => {
   if (!hashOk(sess, txid, 'txCoins')) { return; }
   const lim = limitFromPage(limit, pgnum, `/tx/${txid}/coins`, 500);
@@ -340,14 +348,6 @@ const packetcryptStats = (sess, limit, pgnum) => {
   });
 };
 
-const hashOk = (sess, hash, fn) => {
-  if (!/^[0-9a-f]{64}$/.test(hash)) {
-    complete(sess, fourOhFour(sess, "expecting a hash (32 lower case hex bytes)", fn));
-    return false;
-  }
-  return true;
-};
-
 // This calculation is an estimate, these numbers need to be tuned to match reality.
 const BITS_DIVISOR = 18;
 const ENCRYPTIONS_DIVISOR = 32;
@@ -384,7 +384,7 @@ const packetcryptBlock = (sess, hash) => {
       }
       return void complete(sess, null, ret[0]);
     });
-  })
+  });
 
 };
 
@@ -598,7 +598,7 @@ const getTransactions = (sess, whereClause, done) => {
           const sum = {};
           for (const elem of ret) {
             const bt = sum[elem.txid] = sum[elem.txid] || { input: {}, output: {} };
-            const type = bt[elem.type] = bt[elem.type]
+            const type = bt[elem.type] = bt[elem.type];
             const bal = type[elem.address] = type[elem.address] || {
                 value: BigInt(0), spentcount: 0, unconfirmed: BigInt(0) };
             bal.value += BigInt(elem.value);
@@ -609,7 +609,7 @@ const getTransactions = (sess, whereClause, done) => {
             const out = [];
             for (const addr of Object.keys(inout)) {
               const v = inout[addr];
-              let value = (v.value === BigInt(0)) ? v.unconfirmed.toString() : v.value.toString()
+              let value = (v.value === BigInt(0)) ? v.unconfirmed.toString() : v.value.toString();
               out.push({
                 address: addr,
                 value: value.toString(),
@@ -632,12 +632,12 @@ const getTransactions = (sess, whereClause, done) => {
     }, w());
   }).nThen((_) => {
     if (savedError) {
-      done(savedError)
+      done(savedError);
     } else {
       txs.sort((a,b) => (+new Date(b.firstSeen)) - (+new Date(a.firstSeen)));
       done(null, txs);
     }
-  })
+  });
 };
 
 const blockCoins1 = (sess, blockHash, limit, pgnum) => {
@@ -784,7 +784,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining) => {
   const maxDate = new Date(t + MS_PER_DAY * 3).toISOString().replace(/T.*$/, '');
   const out = [];
   for (let i = 0; i < lim.maxLimit; i++) {
-    const ts = (new Date(t)).toISOString().replace(/T.*$/, 'T00:00:00.000Z')
+    const ts = (new Date(t)).toISOString().replace(/T.*$/, 'T00:00:00.000Z');
     out.push({ date: ts, received: "0" });
     t -= MS_PER_DAY;
   }
@@ -1071,7 +1071,7 @@ const statsCoins = (sess, num) => {
     }
     return void complete(sess, null, r(Number(num)));
   });
-}
+};
 
 const onReq = (ctx, req, res) => {
   ctx.log.debug(req.method + ' ' + req.url);
