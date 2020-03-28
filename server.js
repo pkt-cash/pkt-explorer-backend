@@ -260,7 +260,7 @@ const queryBlocks = (sess, urlq, filter) => {
       FROM (
           SELECT
             *
-          FROM int_mainChain
+          FROM chain
           ${(!isNaN(since)) ? `WHERE height < ${e(since)}` : ''}
           ORDER BY height DESC
           LIMIT ${limit}
@@ -281,7 +281,7 @@ const queryBlockByNumber = (sess, number) => {
   queryBlocks0(sess, 'queryBlock', `hash IN (
     SELECT
         hash
-      FROM int_mainChain
+      FROM chain
       WHERE height = ${Number(number)}
       ORDER BY dateMs DESC
       LIMIT 1
@@ -295,7 +295,7 @@ const chain = (sess, up, limit, pgnum) => {
   queryBlocks0(sess, 'chain', `hash IN (
     SELECT
         hash
-      FROM int_mainChain
+      FROM chain
       FINAL
       ORDER BY height ${(up) ? 'ASC' : 'DESC'}
       LIMIT ${lim.limit}
@@ -1045,12 +1045,13 @@ const statsCoins = (sess, num) => {
     if (typeof(num) !== 'undefined') { return; }
     sess.ch.query(`SELECT
         height
-      FROM int_mainChain
+      FROM chain
       FINAL
       ORDER BY height DESC
       LIMIT 1
     `, w((err, ret) => {
-      if (err || !ret) {
+      if (err || !ret || !ret.length) {
+        w.abort();
         return void complete(sess, dbError(err, "statsCoins"));
       }
       num = ret[0].height;

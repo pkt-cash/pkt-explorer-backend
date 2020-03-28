@@ -193,116 +193,131 @@ const tbl_tx = DATABASE.add('tbl_tx', ClickHouse2.table/*::<Tables.tbl_tx_t>*/({
 }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
 ).withOrder((fields) => [ fields.txid ]));
 
+// Each state is represented by a 3 bit number, the 'state' field contains both current
+// and previous state, the previous state is at bit index zero and the current state is
+// at bit index 3. This allows for quick filtering of state sets using a Uint64.
+// 3 bits will only support a maximum of 8 states, and transitioning to 4 bits would
+// require masking with a 256 bit number.
+const STATE_BITS = 3;
+const PREV_STATE_MASK = (1<<STATE_BITS-1);
+const CURRENT_STATE_MASK = PREV_STATE_MASK;
 
-// There are a couple of states which are intentionally missing:
-// We aren't going to track when a tx has been spent according to a mempool
-// transaction because it will cause a lot more updates to the table as all
-// transactions are in the mempool for a moment.
-// Also we don't consider the possibility of a transaction being "unburned"
-// because transactions burn after aging out and we consider that if we receive
-// a block, it is valid and it will only be replaced by another block of the same
-// height.
-const COIN_STATE = {
+// These are all of the states of a transaction output which we consider worth tracking.
+// States are represented here as numbers shifted left by STATE_BITS.
+const COIN_STATE = [
   // We have not heard anything about this txout
-  nothing: 0b000000,
+  'nothing',
 
   // This txout is currently discovered and in the mempool
-  mempool: 0b001000,
+  'mempool',
 
   // This txout is confirmed in a block
-  block:   0b010000,
+  'block',
+
+  // This txout is confirmed but there is a valid transaction in the mempool to spend it.
+  'spending',
 
   // This txout has been confirmed in a block and a spend has also been confirmed
-  spent:   0b011000,
+  'spent',
 
   // This txout has burned (network steward payments only)
-  burned:  0b100000,
-};
+  'burned',
+].reduce((x,e,i) => { x[e] = i<<STATE_BITS; return x; }, {});
 
-const FIELDS = [
+const FIELDS2 = [
   // This number rises and falls with the amount of balance in the mempool
   'unconfirmed',
 
   // This number is the balance which is in blocks and can be be spent
-  // This sum should always equal (received - unreceived) - (spent - unspent) - burned
+  // This sum should always equal received - spending - spent - burned
   'balance',
 
-  // This is a counter of everything which has ever been received, it only goes up
+  // This is the amount of coins which are in memspent state, they are spent according
+  // to a transaction which has not yet hit a block.
+  'spending',
+
+  // This is a counter of everything which has ever been received, the only way for it
+  // to go down is when a tx is reverted, this happens if you re-sync the chain.
   'received',
 
-  // This is a counter of everything which has ever been spent, it only goes up
+  // This is a counter of everything which has ever been spent, the only way for it
+  // to go down is when a tx is reverted, this happens if you re-sync the chain.
   'spent',
 
-  // This is a counter of everything which has ever been received but then the block was reverted
-  'unreceived',
+  // This is a counter of everything which has ever been burned, the only way for it
+  // to go down is when a tx is reverted, this happens if you re-sync the chain.
+  'burned',
+].reduce((x,e,i) => { x[e] = i; return x; }, {});
 
-  // This is a counter of everything which has ever been spent but then the block was reverted
-  'unspent',
+// These specify the state changes which are done in order to 
+// There is no need to de-increment fields because the from and to are swapped
+// to deduce when fields should be deincremented.
+const stateTransitionRules = (
+  to /*:number*/,
+  from /*:number*/,
+  increment /*:(number)=>void*/,
+) => {
+  // Any time a tx transitions into mempool state, unconfirmed increases
+  if (to === COIN_STATE.mempool) { increment(FIELDS2.unconfirmed); }
 
-  // This is a counter of everything which has ever been received and then burned
-  'burned'
-];
-const MASK = { add: {}, sub: {} };
-FIELDS.forEach((f) => {
-  MASK.add[f] = BigInt(0);
-  MASK.sub[f] = BigInt(0);
-});
+  // Any time a tx transitions into block state, balance increases
+  if (to === COIN_STATE.block) { increment(FIELDS2.balance); }
 
-const stateTrans = (from, to, fields) => {
-  const number = BigInt(1) << BigInt(to | (from >> 3));
-  if (FIELDS.length !== fields.length) { throw new Error(); }
-  fields.forEach((n, i) => {
-    if (n === 1) {
-      MASK.add[FIELDS[i]] |= number;
-    } else if (n === -1) {
-      MASK.sub[FIELDS[i]] |= number;
-    }
-  });
-  return number;
+  // Increment received if the transaction comes from nothing or mempool
+  // to something received
+  if (to > COIN_STATE.mempool && from <= COIN_STATE.mempool) {
+    increment(FIELDS2.received);
+  }
+
+  if (to === COIN_STATE.spending) { increment(FIELDS2.spending); }
+
+  if (to === COIN_STATE.spent) { increment(FIELDS2.spent); }
+
+  if (to === COIN_STATE.burned && from !== COIN_STATE.spent) {
+    increment(FIELDS2.burned);
+  }
 };
 
-(() => {
-  const { nothing, mempool, block, spent, burned } = COIN_STATE;
-                              //  U
-                              //  N               U
-                              //  C   C           N
-                              //  O   O   R       R
-                              //  N   N   E       E   U
-                              //  F   F   C       C   N   B
-                              //  I   I   E   S   E   S   U
-                              //  R   R   I   P   I   P   R
-                              //  M   M   V   E   V   E   N
-                              //  E   E   E   N   E   N   E
-                              //  D   D   D   T   D   T   D
-  stateTrans(nothing, nothing,  [ 0,  0,  0,  0,  0,  0,  0 ]);
-  stateTrans(nothing, mempool,  [ 1,  0,  0,  0,  0,  0,  0 ]);
-  stateTrans(nothing, block,    [ 0,  1,  1,  0,  0,  0,  0 ]);
-  stateTrans(nothing, spent,    [ 0,  0,  1,  1,  0,  0,  0 ]);
-  stateTrans(nothing, burned,   [ 0,  0,  0,  0,  0,  0,  1 ]);
-
-  stateTrans(mempool, nothing,  [-1,  0,  0,  0,  0,  0,  0 ]);
-  stateTrans(mempool, mempool,  [ 0,  0,  0,  0,  0,  0,  0 ]);
-  stateTrans(mempool, block,    [-1,  1,  1,  0,  0,  0,  0 ]);
-  stateTrans(mempool, spent,    [-1,  0,  1,  1,  0,  0,  0 ]);
-  stateTrans(mempool, burned,   [-1,  0,  0,  0,  0,  0,  1 ]);
-
-  stateTrans(block, nothing,    [ 0, -1,  0,  0,  1,  0,  0 ]);
-  stateTrans(block, mempool,    [ 1, -1,  0,  0,  1,  0,  0 ]);
-  stateTrans(block, block,      [ 0,  0,  0,  0,  0,  0,  0 ]);
-  stateTrans(block, spent,      [ 0, -1,  0,  1,  0,  0,  0 ]);
-  stateTrans(block, burned,     [ 0, -1,  0,  0,  0,  0,  1 ]);
-
-  stateTrans(spent, nothing,    [ 0,  0,  0,  0,  0,  1,  0 ]);
-  stateTrans(spent, mempool,    [ 1,  0,  0,  0,  0,  1,  0 ]);
-  stateTrans(spent, block,      [ 0,  1,  0,  0,  0,  1,  0 ]);
-  stateTrans(spent, spent,      [ 0,  0,  0,  0,  0,  0,  0 ]);
-  stateTrans(spent, burned,     [ 0,  0,  0,  0,  0,  0,  1 ]);
-
-  stateTrans(burned, nothing,   [ 0,  0,  0,  0,  0,  0, -1 ]);
-  stateTrans(burned, mempool,   [ 1,  0,  0,  0,  0,  0, -1 ]);
-  stateTrans(burned, block,     [ 0,  1,  0,  0,  0,  0, -1 ]);
-  stateTrans(burned, spent,     [ 0,  0,  0,  0,  0,  0, -1 ]);
-  stateTrans(burned, burned,    [ 0,  0,  0,  0,  0,  0,  0 ]);
+// MASK is a set of bitmasks for each of the fields which apply the rules for
+// state transitions. In order to determine whether a given state transition
+// increases the balance, take: ((1 << stateTr) | MASK.add['balance'])
+// to determine if it decreases the balance, take: ((1 << stateTr) | MASK.sub['balance'])
+const MASK = (() => {
+  const matrix = {};
+  for (let sFrom in COIN_STATE) {
+    const from = COIN_STATE[sFrom];
+    for (let sTo in COIN_STATE) {
+      const to = COIN_STATE[sTo];
+      const grid = new Array(Object.keys(FIELDS2).length).fill(0);
+      stateTransitionRules(to, from, (n) => (void grid[n]++));
+      matrix[sFrom + '|' + sTo] = { from, to, grid };
+    }
+  }
+  const list = [];
+  for (let sFrom in COIN_STATE) {
+    for (let sTo in COIN_STATE) {
+      const forward = matrix[sFrom + '|' + sTo];
+      matrix[sTo + '|' + sFrom].grid.forEach((e, i) => { forward.grid[i] -= e; });
+      list.push(forward);
+    }
+  }
+  const fieldNames = Object.keys(FIELDS2);
+  const mask = { add: {}, sub: {} };
+  for (const f in FIELDS2) {
+    mask.add[f] = BigInt(0);
+    mask.sub[f] = BigInt(0);
+  }
+  for (const el of list) {
+    const number = BigInt(1) << BigInt(el.to | (el.from >> STATE_BITS));
+    el.grid.forEach((n, i) => {
+      if (n === 1) {
+        mask.add[fieldNames[i]] |= number;
+      } else if (n === -1) {
+        mask.sub[fieldNames[i]] |= number;
+      }
+    });
+  }
+  return mask;
 })();
 
 const coins = DATABASE.add('coins', ClickHouse2.table/*::<Tables.coins_t>*/({
@@ -312,7 +327,15 @@ const coins = DATABASE.add('coins', ClickHouse2.table/*::<Tables.coins_t>*/({
   mintIndex:      types.Int32,
 
   // This value is special, it is merged by bit-shifting the old value and adding the new.
-  state:          types.Int8,
+  stateTr:        types.Int8,
+  currentState:   types.Alias(
+    types.Enum(COIN_STATE),
+    `bitAnd(stateTr, ${((1<<STATE_BITS)-1)<<STATE_BITS})`
+  ),
+  prevState:       types.Alias(
+    types.Enum(COIN_STATE),
+    `bitShiftLeft(bitAnd(stateTr, ${(1<<STATE_BITS)-1}), ${STATE_BITS})`
+  ),
   dateMs:         types.UInt64,
 
   // Seen information (filled when it hits mempool)
@@ -345,7 +368,7 @@ const Table_TxSeen = DATABASE.addTemp('TxSeen', ClickHouse2.table/*::<Tables.TxS
   mintTxid:       types.FixedString(64),
   mintIndex:      types.Int32,
 
-  state:          types.Int8,
+  stateTr:        types.Int8,
   dateMs:         types.UInt64,
 
   // Seen information (filled when it hits mempool)
@@ -363,7 +386,7 @@ const Table_TxMinted = DATABASE.addTemp('TxMinted', ClickHouse2.table/*::<Tables
   mintTxid:       types.FixedString(64),
   mintIndex:      types.Int32,
 
-  state:          types.Int8,
+  stateTr:        types.Int8,
   dateMs:         types.UInt64,
 
   // Seen information (filled when it hits mempool)
@@ -383,7 +406,7 @@ const Table_TxUnMinted = DATABASE.addTemp('TxUnMinted', ClickHouse2.table/*::<Ta
   mintTxid:       types.FixedString(64),
   mintIndex:      types.Int32,
 
-  state:          types.Int8,
+  stateTr:        types.Int8,
   dateMs:         types.UInt64,
 
   mintBlockHash: types.FixedString(64),
@@ -395,7 +418,7 @@ const Table_TxSpent = DATABASE.addTemp('TxSpent', ClickHouse2.table/*::<Tables.T
   mintTxid:       types.FixedString(64),
   mintIndex:      types.Int32,
 
-  state:          types.Int8,
+  stateTr:        types.Int8,
   dateMs:         types.UInt64,
 
   // Spent information (filled when the relevant spend hits a block)
@@ -411,30 +434,6 @@ const Table_TxSpent = DATABASE.addTemp('TxSpent', ClickHouse2.table/*::<Tables.T
 
 
 
-
-
-const int_mainChain = DATABASE.add('int_mainChain', ClickHouse2.table/*::<Tables.int_mainChain_t>*/({
-  hash: types.FixedString(64),
-  height: types.Int32,
-  dateMs: types.UInt64
-}).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
-).withOrder((fields) => [ fields.height ]));
-
-const int_mainChain_mv = DATABASE.add('int_mainChain_mv', ClickHouse2.materializedView({
-  to: int_mainChain,
-  as: ClickHouse2.select(tbl_blk).fields((t) => {
-    return {
-      hash: t.fields().hash,
-      height: t.fields().height,
-      dateMs: t.fields().dateMs
-    };
-  })
-}));
-
-
-const MAINCHAIN_VIEW = `v_mainChain`;
-const TIP_VIEW = `v_tip`;
-
 const error = (err, w) => {
   throw new Error(err);
 };
@@ -446,6 +445,67 @@ const eexistTable = (err) => {
   return false;
 };
 
+const dbCreateChain = (ctx, done) => {
+  const chain = ClickHouse2.table/*::<Tables.chain_t>*/({
+    hash: types.FixedString(64),
+    height: types.Int32,
+    dateMs: types.UInt64
+  }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
+  ).withOrder((fields) => [ fields.height ]);
+  chain._.name = 'chain';
+
+  const chainSel = ClickHouse2.select(tbl_blk).fields((t) => {
+    return {
+      hash: t.fields().hash,
+      height: t.fields().height,
+      dateMs: t.fields().dateMs
+    };
+  })
+  
+  const chain_mv = ClickHouse2.materializedView({
+    to: chain,
+    as: chainSel
+  });
+  chain_mv._.name = 'chain_mv';
+
+  const e = (w) => {
+    return w((err, _) => {
+      if (!err) { return; }
+      w.abort();
+      done(err);
+    });
+  };
+  nThen((w) => {
+    if (!ctx.recompute) { return; }
+    ctx.snclog.info('--recompute recomputing chain table');
+    nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS chain`, e(w));
+    }).nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS chain_mv`, e(w));
+    }).nThen(w());
+  }).nThen((w) => {
+    ctx.ch.query(`SELECT * FROM chain LIMIT 1`, w((err, _) => {
+      if (eexistTable(err)) {
+        return;
+      }
+      // err or already exists
+      w.abort();
+      return void done(err);
+    }));
+  }).nThen((w) => {
+    ctx.ch.modify(chain.queryString(), e(w));
+  }).nThen((w) => {
+    ctx.ch.modify(`INSERT INTO chain ${chainSel.queryString()}`, e(w));
+  }).nThen((w) => {
+    ctx.ch.modify(chain_mv.queryString(), e(w));
+  }).nThen((w) => {
+    if (ctx.recompute) {
+      ctx.snclog.info('--recompute recomputing chain table COMPLETE');
+    }
+    done();
+  });
+};
+
 const dbCreateBalances = (ctx, done) => {
   const e = (w) => {
     return w((err, _) => {
@@ -454,14 +514,15 @@ const dbCreateBalances = (ctx, done) => {
       done(err);
     });
   };
-  const selectClause = (state) => `SELECT
+  const selectClause = (s) => `SELECT
       address,
       ${Object.keys(MASK.add).map((k) => (
-        `value * (
-          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.add[k].toString()} ) != 0) -
-          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.sub[k].toString()} ) != 0)
-        ) AS ${k}`
-      )).join(',\n')}`;
+        `(
+          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.add[k].toString()} ) != 0) -
+          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.sub[k].toString()} ) != 0)
+        ) AS ${k}_count,
+        value * ${k}_count AS ${k}
+      `)).join(',\n')}`;
   nThen((w) => {
     if (!ctx.recompute) { return; }
     ctx.snclog.info('--recompute recomputing balances table');
@@ -482,22 +543,23 @@ const dbCreateBalances = (ctx, done) => {
   }).nThen((w) => {
     ctx.ch.modify(`CREATE TABLE balances (
         address        String,
-        ${FIELDS.map((f) => (
-          `${f} SimpleAggregateFunction(sum, Int64)`
-        )).join(', ')}
+        ${Object.keys(FIELDS2).map((f) => `
+          ${f} SimpleAggregateFunction(sum, Int64),
+          ${f}_count SimpleAggregateFunction(sum, Int64)
+        `).join(', ')}
       ) ENGINE AggregatingMergeTree()
       ORDER BY address
       `, e(w));
   }).nThen((w) => {
     // We mask the state here so that all states are from previous "nothing"
     // because this is the first time this has ever been seen.
-    ctx.ch.modify(`INSERT INTO balances ${selectClause(`bitAnd(${0b111000}, state)`)}
+    ctx.ch.modify(`INSERT INTO balances ${selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`)}
       FROM ${coins.name()}
       FINAL
     `, e(w));
   }).nThen((w) => {
     ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS balances_mv TO balances AS
-      ${selectClause('state')} FROM ${coins.name()}
+      ${selectClause('stateTr')} FROM ${coins.name()}
     `, e(w));
   }).nThen((w) => {
     if (ctx.recompute) {
@@ -516,14 +578,14 @@ const dbCreateAddrIncome = (ctx, done) => {
     });
   };
   const fields = ['received'];
-  const selectClause = (state) => `SELECT
+  const selectClause = (s) => `SELECT
       address,
       toDate(mintTime) AS date,
       coinbase,
       ${fields.map((k) => (
         `value * (
-          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.add[k].toString()} ) != 0) -
-          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.sub[k].toString()} ) != 0)
+          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.add[k].toString()} ) != 0) -
+          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.sub[k].toString()} ) != 0)
         ) AS ${k}`
       )).join(',\n')}`;
   nThen((w) => {
@@ -557,13 +619,13 @@ const dbCreateAddrIncome = (ctx, done) => {
   }).nThen((w) => {
     // We mask the state here so that all states are from previous "nothing"
     // because this is the first time this has ever been seen.
-    ctx.ch.modify(`INSERT INTO addrincome ${selectClause(`bitAnd(${0b111000}, state)`)}
+    ctx.ch.modify(`INSERT INTO addrincome ${selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`)}
       FROM ${coins.name()}
       FINAL
     `, e(w));
   }).nThen((w) => {
     ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS addrincome_mv TO addrincome AS
-      ${selectClause('state')} FROM ${coins.name()}
+      ${selectClause('stateTr')} FROM ${coins.name()}
     `, e(w));
   }).nThen((_) => {
     if (ctx.recompute) {
@@ -583,19 +645,19 @@ const dbCreateTxview = (ctx, done) => {
       }
     };
   };
-  const select = (txid, io, state) => `SELECT
+  const select = (txid, io, s) => `SELECT
       ${txid}  AS txid,
       '${io}'  AS type,
       address  AS address,
       coinbase,
       (
-        (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.add['spent'].toString()} ) != 0) -
-        (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.sub['spent'].toString()} ) != 0)
+        (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.add['spent'].toString()} ) != 0) -
+        (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.sub['spent'].toString()} ) != 0)
       ) AS spentcount,
       ${fields.map((k) => (
         `value * (
-          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.add[k].toString()} ) != 0) -
-          (bitAnd( bitShiftLeft(toUInt64(1), ${state}), ${MASK.sub[k].toString()} ) != 0)
+          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.add[k].toString()} ) != 0) -
+          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.sub[k].toString()} ) != 0)
         ) AS ${k}`
       )).join(',\n')}
   `;
@@ -634,9 +696,8 @@ const dbCreateTxview = (ctx, done) => {
         if (err) { return void error(err, w); }
     }));
   }).nThen((w) => {
-    // 0b111000 == discard the previous state, keep current only
     ctx.ch.modify(`INSERT INTO txview
-      ${select('mintTxid', 'output', `bitAnd(${0b111000}, state)`)}
+      ${select('mintTxid', 'output', `bitAnd(${CURRENT_STATE_MASK}, stateTr)`)}
       FROM ${coins.name()}
       FINAL
     `, w((err, _) => {
@@ -647,7 +708,7 @@ const dbCreateTxview = (ctx, done) => {
       }));
   }).nThen((w) => {
     ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS txview_mv_out TO txview AS
-      ${select('mintTxid', 'output', 'state')}
+      ${select('mintTxid', 'output', 'stateTr')}
       FROM ${coins.name()}
     `, w((err, _) => {
         if (err) {
@@ -657,7 +718,7 @@ const dbCreateTxview = (ctx, done) => {
       }));
   }).nThen((w) => {
     ctx.ch.modify(`INSERT INTO txview
-      ${select('spentTxid', 'input', `bitAnd(${0b111000}, state)`)}
+      ${select('spentTxid', 'input', `bitAnd(${CURRENT_STATE_MASK}, stateTr)`)}
       FROM ${coins.name()}
       FINAL
       WHERE spentTxid != toFixedString('',64)
@@ -669,7 +730,7 @@ const dbCreateTxview = (ctx, done) => {
       }));
   }).nThen((w) => {
     ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS txview_mv_in TO txview AS
-      ${select('spentTxid', 'input', 'state')}
+      ${select('spentTxid', 'input', 'stateTr')}
       FROM ${coins.name()}
       WHERE spentTxid != toFixedString('',64)
     `, w((err, _) => {
@@ -730,6 +791,10 @@ const createTables = (ctx, done) => {
       if (err) { return void error(err, w); }
     }));
   }).nThen((w) => {
+    dbCreateChain(ctx, w((err) => {
+      if (err) { return void error(err, w); }
+    }));
+  }).nThen((w) => {
     dbCreateBalances(ctx, w((err) => {
       if (err) { return void error(err, w); }
     }));
@@ -739,31 +804,6 @@ const createTables = (ctx, done) => {
     }));
   }).nThen((w) => {
     dbCreateAddrIncome(ctx, w((err) => {
-      if (err) { return void error(err, w); }
-    }));
-  }).nThen((w) => {
-    ctx.ch.modify(`CREATE VIEW IF NOT EXISTS ${MAINCHAIN_VIEW} AS
-      SELECT
-          argMax(
-            ${int_mainChain.fields().hash.name},
-            ${int_mainChain.fields().dateMs.name}
-          ) AS hash,
-          ${int_mainChain.fields().height.name}
-        FROM ${int_mainChain.name()}
-        GROUP BY ${int_mainChain.fields().height.name}
-    `, w((err, _) => {
-      if (err) { return void error(err, w); }
-    }));
-  }).nThen((w) => {
-    ctx.ch.modify(`CREATE VIEW IF NOT EXISTS ${TIP_VIEW} AS
-      SELECT
-          ${int_mainChain.fields().height.name},
-          ${int_mainChain.fields().hash.name}
-        FROM ${int_mainChain.name()}
-        ORDER BY (${int_mainChain.fields().height.name},
-          ${int_mainChain.fields().dateMs.name}) DESC
-        LIMIT 1
-    `, w((err, _) => {
       if (err) { return void error(err, w); }
     }));
   }).nThen((_) => {
@@ -900,7 +940,7 @@ const convertTxin = (
     mintTxid: normaltxin.txid,
     mintIndex: normaltxin.vout,
 
-    state: COIN_STATE.spent,
+    stateTr: (block) ? COIN_STATE.spent : COIN_STATE.spending,
 
     spentTxid: tx.txid,
     spentTxinNum: txinNum,
@@ -954,7 +994,7 @@ const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs
     mintTxid: tx.txid,
     mintIndex: txout.n,
 
-    state: (block) ? COIN_STATE.block : COIN_STATE.mempool,
+    stateTr: (block) ? COIN_STATE.block : COIN_STATE.mempool,
     dateMs: dateMs,
 
     seenTime:      (block) ? block.time : Math.floor(dateMs/1000),
@@ -1003,8 +1043,9 @@ const convertTx = (ctx, txBlock /*:TxBlock_t*/, dateMs) /*:Tx_t*/ => {
 };
 
 const stateMapper = /*::<X>*/(field, sn, tempTable /*:Table_t<X>*/) => {
-  if (field === 'state') {
-    return `bitShiftRight(${sn}.state, 3) + ${tempTable.name()}.state AS state`;
+  if (field === 'stateTr') {
+    return `bitShiftRight(${sn}.stateTr, ${STATE_BITS}) +
+      ${tempTable.name()}.stateTr AS stateTr`;
   } else if (field === 'seenTime' && tempTable.fields()['seenTime']) {
     return `if(${sn}.seenTime > 0, ${sn}.seenTime, ${tempTable.name()}.seenTime) AS seenTime`;
   }
@@ -1034,14 +1075,10 @@ const dbInsertTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done) => {
       if (err) { throw err; }
     }));
   }).nThen((w) => {
-    // We can't insert txins right now because we don't consider the state of transactions being
-    // spent in mempool.
-    const txIns = txInputs.filter((txin) => txin.spentBlockHash);
-
-    if (!txIns.length) { return; }
+    if (!txInputs.length) { return; }
     // We can't key off of the address because we don't know it, so we must do a table scan.
     const keyFields = [ coins.fields().mintTxid, coins.fields().mintIndex ];
-    ctx.ch.mergeUpdate(Table_TxSpent, txIns, coins, keyFields, stateMapper, w((err) => {
+    ctx.ch.mergeUpdate(Table_TxSpent, txInputs, coins, keyFields, stateMapper, w((err) => {
       if (err) { throw err; }
     }));
   }).nThen((_) => {
@@ -1102,7 +1139,7 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
           mintTxid: x.mintTxid,
           mintIndex: x.mintIndex,
 
-          state: COIN_STATE.block,
+          stateTr: COIN_STATE.block,
           dateMs: now,
 
           spentTxid: "",
@@ -1142,7 +1179,7 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
           mintTxid: x.mintTxid,
           mintIndex: x.mintIndex,
 
-          state: COIN_STATE.mempool,
+          stateTr: COIN_STATE.mempool,
           dateMs: now,
 
           mintBlockHash: "",
@@ -1167,8 +1204,9 @@ const dbNsBurn = (ctx, done) => {
   if (ctx.chain !== 'PKT') { return; }
   const now = +new Date();
   const fields = Object.keys(coins.fields()).map((f) => {
-    if (f === 'state') {
-      return `bitShiftRight(selection.state, 3) + ${COIN_STATE.burned} AS state`;
+    if (!coins.fields()[f].type.writable) { return ''; }
+    if (f === 'stateTr') {
+      return `bitShiftRight(selection.stateTr, ${STATE_BITS}) + ${COIN_STATE.burned} AS stateTr`;
     } else if (f === 'dateMs') {
       return `${now} AS dateMs`;
     } else {
@@ -1188,7 +1226,7 @@ const dbNsBurn = (ctx, done) => {
       LIMIT 1 BY mintTxid, mintIndex
     ) AS selection
     WHERE
-      bitShiftRight(selection.state, 3) = ${COIN_STATE.block >> 3}
+      bitShiftRight(selection.stateTr, ${STATE_BITS}) = ${COIN_STATE.block >> STATE_BITS}
   `, done);
 };
 
@@ -1231,9 +1269,9 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
     ctx.ch.query(`SELECT
         argMax(hash, dateMs) AS hash,
         height
-      FROM int_mainChain
+      FROM chain
       WHERE height >= ${minHeight} AND height <= ${maxHeight}
-      GROUP BY ${int_mainChain.fields().height.name}
+      GROUP BY height
     `, w((err, ret) => {
       if (!err && ret) {
         ret.forEach((bl) => {
@@ -1316,7 +1354,13 @@ const syncChain = (ctx, force, done) => {
     }
     if (ctx.mut.headHash) { return; }
     nThen((w) => {
-      ctx.ch.query(`SELECT * FROM ${TIP_VIEW}`, w((err, ret) => {
+      ctx.ch.query(`SELECT
+          height,
+          hash
+        FROM chain
+        ORDER BY (height, dateMs) DESC
+        LIMIT 1
+      `, w((err, ret) => {
         if (err) {
           ctx.snclog.error(err);
           w.abort();
@@ -1331,7 +1375,7 @@ const syncChain = (ctx, force, done) => {
       ctx.ch.query(`SELECT
           mintTxid
         FROM coins
-        WHERE bitShiftRight(state, 3) = ${COIN_STATE.mempool >> 3}
+        WHERE bitShiftRight(stateTr, ${STATE_BITS}) = ${COIN_STATE.mempool >> STATE_BITS}
       `, w((err, ret) => {
         // CAUTION: This will return entries which were
         // later updated and are nologer in the mempool
