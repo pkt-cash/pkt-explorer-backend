@@ -1354,11 +1354,9 @@ const syncChain = (ctx, force, done) => {
           if (ctx.mut.headHeight === 0) {
             return void error(err, w);
           } else {
-            ctx.rpclog.info(`Unable to get block at height [${ctx.mut.headHeight}] ` +
-              "retrying from zero");
-            ctx.mut.headHeight = 0;
-            ctx.mut.headHash = '';
-            return void again();
+            ctx.rpclog.warn(
+              `Unable to get block at height [${ctx.mut.headHeight}] [${String(err)}]`);
+            return void setTimeout(again, 5000);
           }
         }
         if (ret.hash === ctx.mut.headHash) {
@@ -1517,10 +1515,3 @@ const main = (config, argv) => {
   });
 };
 main(Config, process.argv);
-
-
-/*
-* detect transactions in mempool
-* self-heal when corrupted
-*
-*/
