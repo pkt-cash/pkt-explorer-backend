@@ -228,6 +228,7 @@ const queryBlocks0 = (sess, fn, whereClause, then) => {
   sess.ch.query(`SELECT
       *
     FROM tbl_blk
+    FINAL
     WHERE ${whereClause}
   `, (err, ret) => {
     if (err || !ret) {
