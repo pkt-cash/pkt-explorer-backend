@@ -413,25 +413,26 @@ const richList = (sess, limit, pgnum) => {
   });
 };
 
-// https://github.com/bitpay/bitcore/blob/v8.2.0/packages/bitcore-node/src/models/coin.ts#L65
 const addressBalance = (sess, address) => {
   sess.ch.query(`SELECT
-      sumIf(value, bitShiftRight(state, 3) == 1)  AS unconfirmedReceived,
-      sumIf(value, bitShiftRight(state, 3) > 1)   AS confirmedReceived,
-      confirmedReceived - spent - burned          AS balance,
-      sumIf(value, bitShiftRight(state, 3) == 3)  AS spent,
-      sumIf(value, bitShiftRight(state, 3) == 4)  AS burned,
+      sumIf(value, currentState = 'mempool')      AS unconfirmedReceived,
+      balance + spent + burned                    AS confirmedReceived,
+      sumIf(value, currentState = 'block')        AS balance,
+      sumIf(value, currentState = 'spending')     AS spending,
+      sumIf(value, currentState = 'spent')        AS spent,
+      sumIf(value, currentState = 'burned')       AS burned,
       countIf(coinbase == 0)                      AS recvCount,
       countIf(coinbase > 0)                       AS mineCount,
-      countIf(bitShiftRight(state, 3) == 3)       AS spentCount,
+      countIf(value, currentState = 'spent')      AS spentCount,
+      countIf(value, currentState = 'block')      AS balanceCount,
       sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0))  AS mined24
 
     FROM (
       SELECT
-          any(value)               AS value,
-          argMax(state,    dateMs) AS state,
-          any(coinbase)            AS coinbase,
-          argMax(mintTime, dateMs) AS mintTime
+          any(value)                   AS value,
+          argMax(currentState, dateMs) AS currentState,
+          any(coinbase)                AS coinbase,
+          argMax(mintTime, dateMs)     AS mintTime
         FROM coins
         WHERE address = '${e(address)}'
         GROUP BY (mintTxid,mintIndex)
