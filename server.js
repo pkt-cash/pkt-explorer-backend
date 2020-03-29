@@ -114,7 +114,9 @@ const genericCoins = (sess, fn, whereClause, filter) => {
       toString(spentBlockHash) AS spentBlockHash
     FROM (
       SELECT
-          *
+          *,
+          prevState,
+          currentState
         FROM coins
         WHERE ${whereClause}
         ORDER BY mintTxid, mintIndex, dateMs DESC
@@ -163,7 +165,34 @@ const hashOk = (sess, hash, fn) => {
   return true;
 };
 
-const txCoins = (sess, txid, limit, pgnum) => {
+// v1 only
+const txDetail1 = (sess, txid, limit, pgnum) => {
+  if (!hashOk(sess, txid, 'txDetail')) { return; }
+  const lim = limitFromPage(limit, pgnum, `/tx/${txid}/detail`, 500);
+  const whereClause = `mintTxid = '${e(txid)}' OR spentTxid = '${e(txid)}'`;
+  const filter = (rows) => {
+    const out = {
+      inputs: [],
+      outputs: [],
+      prev: lim.prev,
+      next: lim.getNext(rows.length)
+    };
+    const txids = {};
+    rows.forEach((row) => {
+      delete row.stateTr;
+      if (row.mintTxid === txid) {
+        txids[row.mintTxid] = 1;
+        out.outputs.push(row);
+      } else {
+        out.inputs.push(row);
+      }
+    });
+    return out;
+  };
+  genericCoins(sess, "txDetail", whereClause, filter);
+};
+
+const txCoins0 = (sess, txid, limit, pgnum) => {
   if (!hashOk(sess, txid, 'txCoins')) { return; }
   const lim = limitFromPage(limit, pgnum, `/tx/${txid}/coins`, 500);
   const whereClause = `mintTxid = '${e(txid)}' OR spentTxid = '${e(txid)}'`;
@@ -191,7 +220,7 @@ const txCoins = (sess, txid, limit, pgnum) => {
   genericCoins(sess, "txCoins", whereClause, filter);
 };
 
-const blockCoins = (sess, blockHash, limit, pgnum) => {
+const blockCoins0 = (sess, blockHash, limit, pgnum) => {
   if (!hashOk(sess, blockHash, 'blockCoins')) { return; }
   const lim = limitFromPage(limit, pgnum, `/block/${blockHash}/coins`, 500);
   const subselect = `SELECT
@@ -224,7 +253,7 @@ const blockCoins = (sess, blockHash, limit, pgnum) => {
   genericCoins(sess, "blockCoins", whereClause, filter);
 };
 
-const queryBlocks0 = (sess, fn, whereClause, then) => {
+const _queryBlocks = (sess, fn, whereClause, then) => {
   sess.ch.query(`SELECT
       *
     FROM tbl_blk
@@ -254,7 +283,7 @@ const queryBlocks = (sess, urlq, filter) => {
       fn: "queryBlocks"
     });
   }
-  queryBlocks0(sess, 'queryBlocks', `hash IN (
+  _queryBlocks(sess, 'queryBlocks', `hash IN (
     SELECT
         argMax(hash,dateMs) AS hash
       FROM (
@@ -271,14 +300,15 @@ const queryBlocks = (sess, urlq, filter) => {
   });
 };
 
-const queryBlock = (sess, whereClause) => {
-  queryBlocks0(sess, 'queryBlock', whereClause, (ret) => {
+// used in both api 0 and 1
+const queryBlock01 = (sess, whereClause) => {
+  _queryBlocks(sess, 'queryBlock', whereClause, (ret) => {
     complete(sess, null, ret[0]);
   });
 };
 
-const queryBlockByNumber = (sess, number) => {
-  queryBlocks0(sess, 'queryBlock', `hash IN (
+const queryBlockByNumber0 = (sess, number) => {
+  _queryBlocks(sess, 'queryBlock', `hash IN (
     SELECT
         hash
       FROM chain
@@ -292,7 +322,7 @@ const queryBlockByNumber = (sess, number) => {
 
 const chain = (sess, up, limit, pgnum) => {
   const lim = limitFromPage(limit, pgnum, `/chain/${(up) ? 'up' : 'down'}`, 100);
-  queryBlocks0(sess, 'chain', `hash IN (
+  _queryBlocks(sess, 'chain', `hash IN (
     SELECT
         hash
       FROM chain
@@ -357,7 +387,7 @@ const packetcryptBlock = (sess, hash) => {
   if (!hashOk(sess, hash, "packetcryptBlock")) { return; }
   let block;
   nThen((w) => {
-    queryBlocks0(sess, 'packetcryptBlock', `hash = '${e(hash)}'`, w((ret) => {
+    _queryBlocks(sess, 'packetcryptBlock', `hash = '${e(hash)}'`, w((ret) => {
       block = ret[0];
     }));
   }).nThen((_) => {
@@ -393,10 +423,7 @@ const richList = (sess, limit, pgnum) => {
   const lim = limitFromPage(limit, pgnum, `/stats/richlist`, 500);
   sess.ch.query(`SELECT
       address,
-      sum(balance)     AS balance,
-      sum(unconfirmed) AS unconfirmed,
-      sum(received)    AS received,
-      sum(spent)       AS spent
+      sum(balance)     AS balance
     FROM balances
     GROUP BY address
     ORDER BY balance DESC
@@ -426,7 +453,6 @@ const addressBalance = (sess, address) => {
       countIf(value, currentState = 'spent')      AS spentCount,
       countIf(value, currentState = 'block')      AS balanceCount,
       sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0))  AS mined24
-
     FROM (
       SELECT
           any(value)                   AS value,
@@ -519,6 +545,7 @@ const getTransactions = (sess, whereClause, done) => {
       WHERE ${whereClause}
     `, w((err, ret) => {
       if (err || !ret) {
+        w.abort();
         return void done(dbError(err, "queryTx"));
       } else {
         fixDates(ret, ['firstSeen']);
@@ -586,7 +613,7 @@ const getTransactions = (sess, whereClause, done) => {
             type,
             address,
             spentcount,
-            multiIf(spent > 0, spent, burned > 0, burned, received) AS value,
+            multiIf(spent > 0, spent, spending > 0, spending, burned > 0, burned, received) AS value,
             unconfirmed
           FROM txview
           FINAL
@@ -1149,7 +1176,7 @@ const onReq = (ctx, req, res) => {
           case 'coins': return void blockCoins1(sess, blockHash, parts[3], parts[4]);
           case undefined: {
             if (!hashOk(sess, blockHash, "onReq/queryBlock")) { return; }
-            return void queryBlock(sess, `hash = '${e(blockHash)}'`);
+            return void queryBlock01(sess, `hash = '${e(blockHash)}'`);
           }
         }
       } break;
@@ -1164,7 +1191,7 @@ const onReq = (ctx, req, res) => {
         // /api/PKT/pkt/tx/:txid/
         const txid = parts[1];
         switch (parts[2]) {
-          case 'detail': return void txCoins(sess, txid, parts[3], parts[4]);
+          case 'detail': return void txDetail1(sess, txid, parts[3], parts[4]);
           case undefined: return void txByTxid(sess, txid);
         }
       } break;
@@ -1218,12 +1245,12 @@ const onReq = (ctx, req, res) => {
       default: const blockHashOrNum = parts[1]; switch (parts[2]) {
         // /api/PKT/pkt/block/:hashOrNumber/
         case undefined: if (isHash(blockHashOrNum)) {
-          return void queryBlock(sess, `hash = '${e(blockHashOrNum)}'`);
+          return void queryBlock01(sess, `hash = '${e(blockHashOrNum)}'`);
         } else if (isCannonicalPositiveIntOrZero(blockHashOrNum)) {
-          return void queryBlockByNumber(sess, blockHashOrNum);
+          return void queryBlockByNumber0(sess, blockHashOrNum);
         } break;
         // /api/PKT/pkt/block/:hash/coins/[:limit/:page]
-        case 'coins': return void blockCoins(sess, blockHashOrNum, parts[3], parts[4]);
+        case 'coins': return void blockCoins0(sess, blockHashOrNum, parts[3], parts[4]);
       }
     } break;
 
@@ -1235,7 +1262,7 @@ const onReq = (ctx, req, res) => {
       } break;
       // /api/PKT/pkt/tx/:txid/
       default: const txid = parts[1]; switch (parts[2]) {
-        case 'coins': return void txCoins(sess, txid, parts[3], parts[4]);
+        case 'coins': return void txCoins0(sess, txid, parts[3], parts[4]);
         case undefined: return void txByTxid(sess, txid);
       }
     } break;

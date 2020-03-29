@@ -75,6 +75,7 @@ const BigInt = (({}:any):BigIntConstructor_t);
 
 type RpcTxout_t = {
   value: number,
+  svalue: string,
   n: number,
   scriptPubKey: {
     asm: string,
@@ -145,7 +146,7 @@ import * as Tables from './lib/types_gen.js';
 
 const types = ClickHouse2.types;
 const engines = ClickHouse2.engines;
-const DATABASE = ClickHouse2.database('pkt_insight');
+const DATABASE = ClickHouse2.database();
 
 const tbl_blk = DATABASE.add('tbl_blk', ClickHouse2.table/*::<Tables.tbl_blk_t>*/({
   hash: types.FixedString(64),
@@ -182,6 +183,7 @@ const tbl_blkTx = DATABASE.add('tbl_blkTx', ClickHouse2.table/*::<Tables.tbl_blk
 const tbl_tx = DATABASE.add('tbl_tx', ClickHouse2.table/*::<Tables.tbl_tx_t>*/({
   txid: types.FixedString(64),
   size: types.Int32,
+  vsize: types.Int32,
   version: types.Int32,
   locktime: types.UInt32,
   inputCount: types.Int32,
@@ -199,8 +201,8 @@ const tbl_tx = DATABASE.add('tbl_tx', ClickHouse2.table/*::<Tables.tbl_tx_t>*/({
 // 3 bits will only support a maximum of 8 states, and transitioning to 4 bits would
 // require masking with a 256 bit number.
 const STATE_BITS = 3;
-const PREV_STATE_MASK = (1<<STATE_BITS-1);
-const CURRENT_STATE_MASK = PREV_STATE_MASK;
+const PREV_STATE_MASK = (1<<STATE_BITS)-1;
+const CURRENT_STATE_MASK = PREV_STATE_MASK << STATE_BITS;
 
 // These are all of the states of a transaction output which we consider worth tracking.
 // States are represented here as numbers shifted left by STATE_BITS.
@@ -224,101 +226,55 @@ const COIN_STATE = [
   'burned',
 ].reduce((x,e,i) => { x[e] = i<<STATE_BITS; return x; }, {});
 
-const FIELDS2 = [
-  // This number rises and falls with the amount of balance in the mempool
-  'unconfirmed',
-
-  // This number is the balance which is in blocks and can be be spent
-  // This sum should always equal received - spending - spent - burned
-  'balance',
-
-  // This is the amount of coins which are in memspent state, they are spent according
-  // to a transaction which has not yet hit a block.
-  'spending',
-
-  // This is a counter of everything which has ever been received, the only way for it
-  // to go down is when a tx is reverted, this happens if you re-sync the chain.
-  'received',
-
-  // This is a counter of everything which has ever been spent, the only way for it
-  // to go down is when a tx is reverted, this happens if you re-sync the chain.
-  'spent',
-
-  // This is a counter of everything which has ever been burned, the only way for it
-  // to go down is when a tx is reverted, this happens if you re-sync the chain.
-  'burned',
-].reduce((x,e,i) => { x[e] = i; return x; }, {});
-
-// These specify the state changes which are done in order to 
-// There is no need to de-increment fields because the from and to are swapped
-// to deduce when fields should be deincremented.
-const stateTransitionRules = (
-  to /*:number*/,
-  from /*:number*/,
-  increment /*:(number)=>void*/,
-) => {
-  // Any time a tx transitions into mempool state, unconfirmed increases
-  if (to === COIN_STATE.mempool) { increment(FIELDS2.unconfirmed); }
-
-  // Any time a tx transitions into block state, balance increases
-  if (to === COIN_STATE.block) { increment(FIELDS2.balance); }
-
-  // Increment received if the transaction comes from nothing or mempool
-  // to something received
-  if (to > COIN_STATE.mempool && from <= COIN_STATE.mempool) {
-    increment(FIELDS2.received);
-  }
-
-  if (to === COIN_STATE.spending) { increment(FIELDS2.spending); }
-
-  if (to === COIN_STATE.spent) { increment(FIELDS2.spent); }
-
-  if (to === COIN_STATE.burned && from !== COIN_STATE.spent) {
-    increment(FIELDS2.burned);
-  }
-};
-
 // MASK is a set of bitmasks for each of the fields which apply the rules for
 // state transitions. In order to determine whether a given state transition
-// increases the balance, take: ((1 << stateTr) | MASK.add['balance'])
-// to determine if it decreases the balance, take: ((1 << stateTr) | MASK.sub['balance'])
-const MASK = (() => {
-  const matrix = {};
+// increases the balance, take: ((1 << stateTr) | MASK.balance.add)
+// to determine if it decreases the balance, take: ((1 << stateTr) | MASK.balance.sub])
+/*::
+type Mask_t = { add: number, sub: number };
+*/
+const MASK /*:{ [string]: Mask_t }*/ = (() => {
+  const list = [];
+  const states = Object.keys(COIN_STATE);
   for (let sFrom in COIN_STATE) {
     const from = COIN_STATE[sFrom];
     for (let sTo in COIN_STATE) {
       const to = COIN_STATE[sTo];
-      const grid = new Array(Object.keys(FIELDS2).length).fill(0);
-      stateTransitionRules(to, from, (n) => (void grid[n]++));
-      matrix[sFrom + '|' + sTo] = { from, to, grid };
+      const grid = new Array(states.length).fill(0);
+      grid[states.indexOf(sTo)] += 1;
+      grid[states.indexOf(sFrom)] -= 1;
+      list.push({ name: sFrom + '|' + sTo, from, to, grid });
     }
   }
-  const list = [];
-  for (let sFrom in COIN_STATE) {
-    for (let sTo in COIN_STATE) {
-      const forward = matrix[sFrom + '|' + sTo];
-      matrix[sTo + '|' + sFrom].grid.forEach((e, i) => { forward.grid[i] -= e; });
-      list.push(forward);
-    }
-  }
-  const fieldNames = Object.keys(FIELDS2);
-  const mask = { add: {}, sub: {} };
-  for (const f in FIELDS2) {
-    mask.add[f] = BigInt(0);
-    mask.sub[f] = BigInt(0);
-  }
+  // console.log(states);
+  // list.forEach((x)=>console.log(x.name,new Array(20-x.name.length).join(' '),x.grid));
+  const mask = {};
   for (const el of list) {
     const number = BigInt(1) << BigInt(el.to | (el.from >> STATE_BITS));
     el.grid.forEach((n, i) => {
+      const x = mask[states[i]] = (mask[states[i]] || { add: BigInt(0), sub: BigInt(0) });
       if (n === 1) {
-        mask.add[fieldNames[i]] |= number;
+        x.add |= number;
       } else if (n === -1) {
-        mask.sub[fieldNames[i]] |= number;
+        x.sub |= number;
       }
     });
   }
   return mask;
 })();
+
+// Generate an sql clause to test whether the state transition field matches any of
+// a set of states. The following example will return 1 if the spending or spent fields
+// should be incremented, -1 if they should be deincremented (rollback) or 0 otherwise.
+// matchStateTrClause('stateTr', [MASK.spending, MASK.spent])
+const matchStateTrClause = (sTr, masks /*:Array<Mask_t>*/) => `(
+  (bitAnd( bitShiftLeft(toUInt64(1), ${sTr}),
+    0x${masks.map((m) => m.add).reduce((out, n)=>(out | n), BigInt(0)).toString(16)
+  } ) != 0) -
+  (bitAnd( bitShiftLeft(toUInt64(1), ${sTr}),
+    0x${masks.map((m) => m.sub).reduce((out, n)=>(out | n), BigInt(0)).toString(16)}
+  ) != 0)
+)`;
 
 const coins = DATABASE.add('coins', ClickHouse2.table/*::<Tables.coins_t>*/({
   // Key
@@ -446,7 +402,7 @@ const eexistTable = (err) => {
 };
 
 const dbCreateChain = (ctx, done) => {
-  const chain = ClickHouse2.table/*::<Tables.chain_t>*/({
+  const chain = ClickHouse2.table({
     hash: types.FixedString(64),
     height: types.Int32,
     dateMs: types.UInt64
@@ -515,14 +471,9 @@ const dbCreateBalances = (ctx, done) => {
     });
   };
   const selectClause = (s) => `SELECT
-      address,
-      ${Object.keys(MASK.add).map((k) => (
-        `(
-          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.add[k].toString()} ) != 0) -
-          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.sub[k].toString()} ) != 0)
-        ) AS ${k}_count,
-        value * ${k}_count AS ${k}
-      `)).join(',\n')}`;
+    address,
+    value * ${matchStateTrClause(s, [ MASK.block ])} AS balance
+  `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
     ctx.snclog.info('--recompute recomputing balances table');
@@ -543,10 +494,7 @@ const dbCreateBalances = (ctx, done) => {
   }).nThen((w) => {
     ctx.ch.modify(`CREATE TABLE balances (
         address        String,
-        ${Object.keys(FIELDS2).map((f) => `
-          ${f} SimpleAggregateFunction(sum, Int64),
-          ${f}_count SimpleAggregateFunction(sum, Int64)
-        `).join(', ')}
+        balance SimpleAggregateFunction(sum, Int64)
       ) ENGINE AggregatingMergeTree()
       ORDER BY address
       `, e(w));
@@ -577,17 +525,13 @@ const dbCreateAddrIncome = (ctx, done) => {
       done(err);
     });
   };
-  const fields = ['received'];
   const selectClause = (s) => `SELECT
-      address,
-      toDate(mintTime) AS date,
-      coinbase,
-      ${fields.map((k) => (
-        `value * (
-          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.add[k].toString()} ) != 0) -
-          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.sub[k].toString()} ) != 0)
-        ) AS ${k}`
-      )).join(',\n')}`;
+    address,
+    toDate(mintTime) AS date,
+    coinbase,
+    value * ${matchStateTrClause(s, [
+      MASK.block, MASK.spending, MASK.spent, MASK.burned ])} AS received
+  `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
     ctx.snclog.info('--recompute recomputing addrincome table');
@@ -610,9 +554,7 @@ const dbCreateAddrIncome = (ctx, done) => {
         address        String,
         date           Date,
         coinbase       Int8,
-        ${fields.map((f) => (
-          `${f} SimpleAggregateFunction(sum, Int64)`
-        )).join(', ')}
+        received SimpleAggregateFunction(sum, Int64)
       ) ENGINE AggregatingMergeTree()
       ORDER BY (address, date, coinbase)
     `, e(w));
@@ -636,30 +578,29 @@ const dbCreateAddrIncome = (ctx, done) => {
 };
 
 const dbCreateTxview = (ctx, done) => {
-  const fields = ['unconfirmed', 'received', 'spent', 'burned'];
+  const fields = {
+    unconfirmed: [ MASK.mempool ],
+    received: [ MASK.block, MASK.spending, MASK.spent, MASK.burned ],
+    spending: [ MASK.spending ],
+    spent: [ MASK.spent ],
+    burned: [ MASK.burned ],
+  };
   const e = (w) => {
-    return (err) => {
+    return w((err) => {
       if (err) {
         w.abort();
         return void done(err);
       }
-    };
+    });
   };
   const select = (txid, io, s) => `SELECT
       ${txid}  AS txid,
       '${io}'  AS type,
       address  AS address,
       coinbase,
-      (
-        (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.add['spent'].toString()} ) != 0) -
-        (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.sub['spent'].toString()} ) != 0)
-      ) AS spentcount,
-      ${fields.map((k) => (
-        `value * (
-          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.add[k].toString()} ) != 0) -
-          (bitAnd( bitShiftLeft(toUInt64(1), ${s}), ${MASK.sub[k].toString()} ) != 0)
-        ) AS ${k}`
-      )).join(',\n')}
+      ${matchStateTrClause(s, [ MASK.spent, MASK.spending ])} AS spentcount,
+      ${Object.keys(fields).map((k) =>
+        `value * ${matchStateTrClause(s, fields[k])} AS ${k}`).join(',')}
   `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
@@ -687,7 +628,7 @@ const dbCreateTxview = (ctx, done) => {
         address        String,
         coinbase       Int8,
         spentcount     SimpleAggregateFunction(sum, Int64),
-        ${fields.map((f) => (
+        ${Object.keys(fields).map((f) => (
           `${f} SimpleAggregateFunction(sum, Int64)`
         )).join(', ')}
       ) ENGINE AggregatingMergeTree()
@@ -913,17 +854,6 @@ const getTransactionsForHashes = (ctx, hashes, done) => {
   });
 };
 
-const BIG_230 = BigInt(1<<30);
-const convertValue = (f /*:number*/) /*:BigInt_t*/ => {
-  const fs = f.toString(16);
-  const out = BigInt('0x' + fs.replace('.','')) * BIG_230;
-  if (fs.indexOf('.') > -1) {
-    const bits = BigInt((fs.length - fs.indexOf('.') - 1) * 4);
-    return out >> bits;
-  }
-  return out;
-};
-
 const convertTxin = (
   txBlock /*:TxBlock_t*/,
   txin /*:RpcTxin_t*/,
@@ -988,7 +918,7 @@ const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs
   } else {
     address = txout.scriptPubKey.addresses[0];
   }
-  const value = convertValue(txout.value);
+  const value = BigInt(txout.svalue);
   const out = {
     address: address,
     mintTxid: tx.txid,
@@ -1017,7 +947,7 @@ type Tx_t = {
 const convertTx = (ctx, txBlock /*:TxBlock_t*/, dateMs) /*:Tx_t*/ => {
   let value = BigInt(0);
   const { tx, block } = txBlock;
-  tx.vout.forEach((x) => { value += convertValue(x.value); });
+  tx.vout.forEach((x) => { value += BigInt(x.svalue); });
   let coinbase = "";
   if (typeof(tx.vin[0].coinbase) === 'string') {
     coinbase = tx.vin[0].coinbase;
@@ -1026,6 +956,7 @@ const convertTx = (ctx, txBlock /*:TxBlock_t*/, dateMs) /*:Tx_t*/ => {
     meta: {
       txid: tx.txid,
       size: tx.size,
+      vsize: tx.vsize,
       version: tx.version,
       locktime: tx.locktime,
       inputCount: tx.vin.length - Number(coinbase !== ""),
@@ -1125,10 +1056,23 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
     ch.query(`SELECT
         mintTxid,
         mintIndex
-      FROM ${coins.name()}
+      FROM (
+        SELECT
+            mintTxid,
+            mintIndex,
+            spentBlockHash
+        FROM ${coins.name()}
+        WHERE (mintTxid,mintIndex) IN (
+          SELECT
+              mintTxid,
+              mintIndex
+            FROM ${coins.name()}
+            WHERE spentBlockHash IN ${subSelect}
+        )
+        ORDER BY mintTxid, mintIndex, dateMs DESC
+        LIMIT 1 BY mintTxid, mintIndex
+      )
       WHERE spentBlockHash IN ${subSelect}
-      ORDER BY mintTxid, mintIndex, dateMs DESC
-      LIMIT 1 BY mintTxid, mintIndex
     `, w((err, ret) => {
       if (err || !ret) {
         w.abort();
@@ -1161,13 +1105,25 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
   }).nThen((w) => {
     const now = +new Date();
     ch.query(`SELECT
-        address,
         mintTxid,
         mintIndex
-      FROM ${coins.name()}
+      FROM (
+        SELECT
+            mintTxid,
+            mintIndex,
+            spentBlockHash
+        FROM ${coins.name()}
+        WHERE (mintTxid,mintIndex) IN (
+          SELECT
+              mintTxid,
+              mintIndex
+            FROM ${coins.name()}
+            WHERE mintBlockHash IN ${subSelect}
+        )
+        ORDER BY mintTxid, mintIndex, dateMs DESC
+        LIMIT 1 BY mintTxid, mintIndex
+      )
       WHERE mintBlockHash IN ${subSelect}
-      ORDER BY mintTxid, mintIndex, dateMs DESC
-      LIMIT 1 BY mintTxid, mintIndex
     `, w((err, ret) => {
       if (err || !ret) {
         w.abort();
@@ -1179,6 +1135,10 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
           mintTxid: x.mintTxid,
           mintIndex: x.mintIndex,
 
+          // This allows the possibility of a coinbase transaction ending
+          // up in the mempool state, which is invalid by definition, but
+          // we don't really have any other way to speak about an orphaned
+          // coinbase tx so we might as well accept it like this.
           stateTr: COIN_STATE.mempool,
           dateMs: now,
 
@@ -1203,8 +1163,9 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
 const dbNsBurn = (ctx, done) => {
   if (ctx.chain !== 'PKT') { return; }
   const now = +new Date();
-  const fields = Object.keys(coins.fields()).map((f) => {
-    if (!coins.fields()[f].type.writable) { return ''; }
+  const fields = Object.keys(coins.fields()).filter((f) => (
+    coins.fields()[f].type.writable
+  )).map((f) => {
     if (f === 'stateTr') {
       return `bitShiftRight(selection.stateTr, ${STATE_BITS}) + ${COIN_STATE.burned} AS stateTr`;
     } else if (f === 'dateMs') {
@@ -1225,8 +1186,7 @@ const dbNsBurn = (ctx, done) => {
       ORDER BY mintTxid, mintIndex, dateMs DESC
       LIMIT 1 BY mintTxid, mintIndex
     ) AS selection
-    WHERE
-      bitShiftRight(selection.stateTr, ${STATE_BITS}) = ${COIN_STATE.block >> STATE_BITS}
+    WHERE selection.currentState = ${COIN_STATE.block}
   `, done);
 };
 
