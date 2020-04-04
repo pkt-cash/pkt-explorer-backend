@@ -762,7 +762,6 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
             address = '${e(address)}'
             ${mc}
           GROUP BY mintTxid
-          ORDER BY time DESC
         UNION ALL SELECT
             argMax(spentTime, dateMs)   AS time,
             spentTxid                   AS txid
@@ -771,8 +770,8 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
             spentTime > 0
             AND address = '${e(address)}'
           GROUP BY spentTxid, spentTime
-          ORDER BY time DESC
       )
+      ORDER BY time DESC
       LIMIT ${lim.limit}
   )`, (err, ret) => {
     if (!ret) {
