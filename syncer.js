@@ -2,6 +2,8 @@
 /* global BigInt */
 // SPDX-License-Identifier: MIT
 'use strict';
+const Util = require('util');
+
 const nThen = require('nthen');
 const RpcClient = require('bitcoind-rpc');
 
@@ -73,17 +75,18 @@ type BigInt_t = number;
 type BigIntConstructor_t = (number|string)=>BigInt_t;
 const BigInt = (({}:any):BigIntConstructor_t);
 
+type RpcScriptPubKey_t = {
+  asm: string,
+  hex: string,
+  type: string,
+  reqSigs?: number,
+  addresses?: Array<string>
+};
 type RpcTxout_t = {
   value: number,
   svalue: string,
   n: number,
-  scriptPubKey: {
-    asm: string,
-    hex: string,
-    type: string,
-    reqSigs?: number,
-    addresses?: Array<string>
-  }
+  scriptPubKey: RpcScriptPubKey_t,
 };
 type RpcTxinCoinbase_t = {
   coinbase: string,
@@ -97,6 +100,11 @@ type RpcTxinNormal_t = {
     hex: string
   },
   txinwitness?: Array<string>,
+  prevOut: {
+    scriptPubKey: RpcScriptPubKey_t,
+    value: number,
+    svalue: string,
+  },
   "sequence": number
 };
 type RpcTxin_t = RpcTxinCoinbase_t | RpcTxinNormal_t;
@@ -133,6 +141,7 @@ type RpcBlock_t = {
   packetcryptannbits?: string,
   packetcryptanndifficulty?: number,
   packetcryptblkdifficulty?: number,
+  sblockreward: string,
 };
 type TxBlock_t = {
   tx: RpcTx_t,
@@ -371,6 +380,7 @@ const Table_TxUnMinted = DATABASE.addTemp('TxUnMinted', ClickHouse2.table/*::<Ta
 
 // This serves also as the unspent table
 const Table_TxSpent = DATABASE.addTemp('TxSpent', ClickHouse2.table/*::<Tables.TxSpent_t>*/({
+  address:        types.String,
   mintTxid:       types.FixedString(64),
   mintIndex:      types.Int32,
 
@@ -842,7 +852,7 @@ const getTransactionsForHashes = (ctx, hashes, done) => {
       rpcGetTransaction(ctx, th, w((err, tx) => {
         if (!tx) {
           console.error(`Failed to get transaction [${th}] ` +
-            `[${String(err)}] will retry later...`);
+            `[${Util.inspect(err)}] will retry later...`);
           return;
         }
         transactions.push(tx);
@@ -866,9 +876,17 @@ const convertTxin = (
     throw new Error("I can't understand this txin " + JSON.stringify(txin));
   }
   const normaltxin = ((txin /*:any*/) /*:RpcTxinNormal_t*/);
+  let address = 'script:' +
+    Buffer.from(normaltxin.prevOut.scriptPubKey.hex, 'hex').toString('base64');
+  if (typeof(normaltxin.prevOut.scriptPubKey.addresses) === 'object') {
+    normaltxin.prevOut.scriptPubKey.addresses.forEach((a) => {
+      address = a;
+    });
+  }
   const out = {
     mintTxid: normaltxin.txid,
     mintIndex: normaltxin.vout,
+    address,
 
     stateTr: (block) ? COIN_STATE.spent : COIN_STATE.spending,
 
@@ -1178,7 +1196,8 @@ const dbNsBurn = (ctx, done) => {
       ${fields.join(', ')}
     FROM (
       SELECT
-          *
+          *,
+          currentState
       FROM ${coins.name()}
       WHERE
         coinbase = 2 AND
