@@ -12,6 +12,10 @@ const Log = require('./lib/log.js');
 
 const Config = require('./config.js');
 
+
+// Try a repair of the db every 5 minutes
+const MS_BETWEEN_REPAIRS = 1000 * 60 * 5;
+
 /*::
 import type {
   ClickHouse_t,
@@ -68,25 +72,19 @@ type Context_t = {
   mut: {
     mempool: Array<string>,
     headHash: string,
-    headHeight: number
+    headHeight: number,
+    timeOfLastRepair: number,
   }
 };
 type BigInt_t = number;
 type BigIntConstructor_t = (number|string)=>BigInt_t;
 const BigInt = (({}:any):BigIntConstructor_t);
 
-type RpcScriptPubKey_t = {
-  asm: string,
-  hex: string,
-  type: string,
-  reqSigs?: number,
-  addresses?: Array<string>
-};
 type RpcTxout_t = {
   value: number,
   svalue: string,
   n: number,
-  scriptPubKey: RpcScriptPubKey_t,
+  address: string,
 };
 type RpcTxinCoinbase_t = {
   coinbase: string,
@@ -101,7 +99,7 @@ type RpcTxinNormal_t = {
   },
   txinwitness?: Array<string>,
   prevOut: {
-    scriptPubKey: RpcScriptPubKey_t,
+    address: string,
     value: number,
     svalue: string,
   },
@@ -846,12 +844,12 @@ const rpcGetTransaction = (ctx, hash /*:string*/, done) => {
 const getTransactionsForHashes = (ctx, hashes, done) => {
   const transactions = [];
   let nt = nThen;
-  console.error(`Getting [${hashes.length}] transactions`);
+  ctx.snclog.debug(`Getting [${hashes.length}] transactions`);
   hashes.forEach((th) => {
     nt = nt((w) => {
       rpcGetTransaction(ctx, th, w((err, tx) => {
         if (!tx) {
-          console.error(`Failed to get transaction [${th}] ` +
+          ctx.snclog.error(`Failed to get transaction [${th}] ` +
             `[${Util.inspect(err)}] will retry later...`);
           return;
         }
@@ -876,13 +874,7 @@ const convertTxin = (
     throw new Error("I can't understand this txin " + JSON.stringify(txin));
   }
   const normaltxin = ((txin /*:any*/) /*:RpcTxinNormal_t*/);
-  let address = 'script:' +
-    Buffer.from(normaltxin.prevOut.scriptPubKey.hex, 'hex').toString('base64');
-  if (typeof(normaltxin.prevOut.scriptPubKey.addresses) === 'object') {
-    normaltxin.prevOut.scriptPubKey.addresses.forEach((a) => {
-      address = a;
-    });
-  }
+  const address = normaltxin.prevOut.address;
   const out = {
     mintTxid: normaltxin.txid,
     mintIndex: normaltxin.vout,
@@ -928,17 +920,9 @@ const getCoinbase = (ctx, txBlock, txout, value) => {
 
 const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs) /*:Tables.TxMinted_t*/ => {
   const { tx, block } = txBlock;
-  const script = Buffer.from(txout.scriptPubKey.hex, 'hex').toString('base64');
-  let address = `script:${script}`;
-  if (!txout.scriptPubKey) {
-  } else if (!txout.scriptPubKey.addresses) {
-  } else if (!txout.scriptPubKey.addresses[0]) {
-  } else {
-    address = txout.scriptPubKey.addresses[0];
-  }
   const value = BigInt(txout.svalue);
   const out = {
-    address: address,
+    address: txout.address,
     mintTxid: tx.txid,
     mintIndex: txout.n,
 
@@ -947,7 +931,7 @@ const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs
 
     seenTime:      (block) ? block.time : Math.floor(dateMs/1000),
     value:         value.toString(),
-    script:        script,
+    script:        '',
     coinbase:      getCoinbase(ctx, txBlock, txout, value),
     mintBlockHash: (block) ? block.hash : "",
     mintHeight:    (block) ? block.height : -1,
@@ -1309,7 +1293,8 @@ const checkMempool = (ctx, done) => {
     getTransactionsForHashes(ctx, newTx, w((txs) => {
       for (const tx of txs) {
         hasMempoolTx = true;
-        ctx.snclog.debug(`Adding mempool transaction [${tx.txid}]`);
+        // spam
+        //ctx.snclog.debug(`Adding mempool transaction [${tx.txid}]`);
       }
       dbInsertTransactions(ctx, txs.map((tx) => { return { tx: tx, block: null }; }), w(() => {
         // Only log the transactions we actually got into the mempool
@@ -1321,6 +1306,55 @@ const checkMempool = (ctx, done) => {
     if (hasMempoolTx) { ctx.snclog.debug(`Mempool synced`); }
     done();
   });
+};
+
+const repairBlocks = (ctx, done) => {
+  const missingBlockNumbers = [];
+  ctx.snclog.debug(`repairBlocks() running`);
+  nThen((w) => {
+    ctx.ch.query(`SELECT
+        *
+      FROM (
+        SELECT
+            toInt32(number) AS height
+          FROM system.numbers
+          LIMIT ${ctx.mut.headHeight}
+      )
+      WHERE height NOT IN ( SELECT height from chain )
+    `, w((err, ret) => {
+      if (err) {
+        ctx.snclog.error(err);
+        w.abort();
+        done(err);
+      } else if (ret && ret.length) {
+        for (const elem of ret) {
+          missingBlockNumbers.push(elem.height);
+        }
+        ctx.snclog.info(`Need to repair block numbers: [${missingBlockNumbers.join()}]`);
+      }
+    }));
+  }).nThen((w) => {
+    let nt = nThen;
+    const _w = w;
+    for (const n of missingBlockNumbers) {
+      nt = nt((w) => {
+        rpcGetBlockByHeight(ctx, n, w((err, ret) => {
+          if (ret) {
+            ctx.rpclog.debug(`Repairing block [${ret.hash}] [${n}]`);
+            dbInsertBlocks(ctx, [ret], w());
+          } else {
+            ctx.snclog.error(err);
+            w.abort();
+            _w.abort();
+            done(err);
+          }
+        }));
+      }).nThen
+    }
+    nt(w())
+  }).nThen((w) => {
+    done();
+  })
 };
 
 const syncChain = (ctx, force, done) => {
@@ -1441,6 +1475,11 @@ const syncChain = (ctx, force, done) => {
     dbNsBurn(ctx, w((err, _) => {
       if (err) { return void error(err, w); }
     }));
+  }).nThen((w) => {
+    if (((+new Date()) - ctx.mut.timeOfLastRepair) > MS_BETWEEN_REPAIRS) {
+      // If this calls back with an error, we'll just let it go and try again next cycle.
+      repairBlocks(ctx, w());
+    }
 
   //   const again = () => {
   //     syncBlockTx(ctx, w((needMore) => {
@@ -1509,7 +1548,8 @@ const main = (config, argv) => {
     mut: {
       headHash: '',
       headHeight: 0,
-      mempool: []
+      mempool: [],
+      timeOfLastRepair: 0,
     }
   }) /*:Context_t*/);
   nThen((w) => {
