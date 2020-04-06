@@ -846,6 +846,69 @@ const addressIncome1 = (sess, address, limit, pgnum, mining) => {
   });
 };
 
+const nsCandidates = (sess, limit, pgnum) => {
+  const lim = limitFromPage(limit, pgnum, `/ns/candidates`, 100);
+  sess.ch.query(`SELECT
+      candidate,
+      sumIf(votes, type = 'for') AS votesFor,
+      sumIf(votes, type = 'against') AS votesAgainst
+    FROM votes
+    WHERE candidate != ''
+    GROUP BY candidate
+    ORDER BY votesFor DESC
+  `, (err, ret) => {
+    if (err || !ret) {
+      return void complete(sess, dbError(err, "nsCandidates"));
+    }
+    complete(sess, null, {
+      result: ret,
+      prev: lim.prev,
+      next: lim.getNext(ret.length),
+    });
+  });
+};
+
+const ns = (sess) => {
+  let r = Rewards.pkt;
+  if (sess.config.blockRewards) {
+    r = Rewards[sess.config.blockRewards];
+    if (typeof(r) !== 'function') {
+      return void complete(sess, {
+        code: 500,
+        error: "blockReward model [" + sess.config.blockRewards + "] does not exist",
+        fn: "onReq"
+      });
+    }
+  }
+  sess.ch.query(`WITH (
+      SELECT
+          networkSteward,
+          height
+        FROM tbl_blk
+        ORDER BY height DESC, dateMs DESC
+        LIMIT 1
+    ) AS ns_height
+    SELECT
+      candidate,
+      sumIf(votes, type = 'for') AS votesFor,
+      sumIf(votes, type = 'against') AS votesAgainst,
+      ns_height.2 AS height
+    FROM votes
+    WHERE candidate = ns_height.1
+    GROUP BY candidate
+    FORMAT JSONEachRow
+  `, (err, ret) => {
+    if (err || !ret || !ret.length) {
+      return void complete(sess, dbError(err, "ns"));
+    }
+    complete(sess, null, {
+      networkSteward: ret[0].candidate,
+      votesAgainst: ret[0].votesAgainst,
+      votesNeeded: (BigInt(r(ret[0].height).alreadyMined) / BigInt(2)).toString()
+    });
+  });
+};
+
 const addressCoins = (sess, address, limit, pgnum) => {
   const lim = limitFromPage(limit, pgnum, `/address/${address}/coins`, 10);
   const ch = sess.ch.withSession();
@@ -1156,6 +1219,11 @@ const onReq = (ctx, req, res) => {
         case 'richlist': return void richList(sess, parts[2], parts[3]);
         case 'daily-transactions': return void dailyTransactions(sess);
       } break;
+
+      case 'ns': switch(parts[1]) {
+        case 'candidates': return void nsCandidates(sess, parts[2], parts[3]);
+        case undefined: return void ns(sess);
+      }
 
       // /api/PKT/pkt/address/
       case 'address': switch (parts[1]) {

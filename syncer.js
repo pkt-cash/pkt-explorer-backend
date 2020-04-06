@@ -80,11 +80,17 @@ type BigInt_t = number;
 type BigIntConstructor_t = (number|string)=>BigInt_t;
 const BigInt = (({}:any):BigIntConstructor_t);
 
+type RpcVote_t = {
+  for?: string,
+  against?: string,
+};
+
 type RpcTxout_t = {
   value: number,
   svalue: string,
   n: number,
   address: string,
+  vote?: RpcVote_t,
 };
 type RpcTxinCoinbase_t = {
   coinbase: string,
@@ -140,6 +146,7 @@ type RpcBlock_t = {
   packetcryptanndifficulty?: number,
   packetcryptblkdifficulty?: number,
   sblockreward: string,
+  networksteward?: string,
 };
 type TxBlock_t = {
   tx: RpcTx_t,
@@ -171,7 +178,8 @@ const tbl_blk = DATABASE.add('tbl_blk', ClickHouse2.table/*::<Tables.tbl_blk_t>*
   pcAnnDifficulty: types.Float64,
   pcBlkDifficulty: types.Float64,
   pcVersion: types.Int8,
-  dateMs: types.UInt64
+  dateMs: types.UInt64,
+  networkSteward: types.String,
 }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
 ).withOrder((fields) => [ fields.hash ]));
 
@@ -303,8 +311,9 @@ const coins = DATABASE.add('coins', ClickHouse2.table/*::<Tables.coins_t>*/({
 
   // Seen information (filled when it hits mempool)
   value:          types.Int64_string,
-  script:         types.String,
   coinbase:       types.Int8,
+  voteFor:        types.String,
+  voteAgainst:    types.String,
   // This value is special, it is merged using min()
   seenTime:       types.DateTime_number('UTC'),
 
@@ -336,7 +345,8 @@ const Table_TxSeen = DATABASE.addTemp('TxSeen', ClickHouse2.table/*::<Tables.TxS
 
   // Seen information (filled when it hits mempool)
   value:          types.Int64_string,
-  script:         types.String,
+  voteFor:        types.String,
+  voteAgainst:    types.String,
   coinbase:       types.Int8,
   seenTime:       types.DateTime_number('UTC'),
 }));
@@ -354,7 +364,8 @@ const Table_TxMinted = DATABASE.addTemp('TxMinted', ClickHouse2.table/*::<Tables
 
   // Seen information (filled when it hits mempool)
   value:          types.Int64_string,
-  script:         types.String,
+  voteFor:        types.String,
+  voteAgainst:    types.String,
   coinbase:       types.Int8,
   seenTime:       types.DateTime_number('UTC'),
 
@@ -465,6 +476,74 @@ const dbCreateChain = (ctx, done) => {
   }).nThen((w) => {
     if (ctx.recompute) {
       ctx.snclog.info('--recompute recomputing chain table COMPLETE');
+    }
+    done();
+  });
+};
+
+const dbCreateVotes = (ctx, done) => {
+  const e = (w) => {
+    return w((err, _) => {
+      if (!err) { return; }
+      w.abort();
+      done(err);
+    });
+  };
+  const selectClause = (s, voteType) => `SELECT
+    '${voteType === 'voteFor' ? 'for' : 'against'}' AS type,
+    ${voteType} AS candidate,
+    value * ${matchStateTrClause(s, [ MASK.block ])} AS votes
+  `;
+  nThen((w) => {
+    if (!ctx.recompute) { return; }
+    ctx.snclog.info('--recompute recomputing votes table');
+    nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS votes`, e(w));
+    }).nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS votes_for_mv`, e(w));
+    }).nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS votes_against_mv`, e(w));
+    }).nThen(w());
+  }).nThen((w) => {
+    ctx.ch.query(`SELECT * FROM votes LIMIT 1`, w((err, _) => {
+      if (eexistTable(err)) {
+        return;
+      }
+      // err or already exists
+      w.abort();
+      return void done(err);
+    }));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE TABLE votes (
+        type        Enum('for' = 0, 'against' = 1),
+        candidate   String,
+        votes       SimpleAggregateFunction(sum, Int64)
+      ) ENGINE AggregatingMergeTree()
+      ORDER BY (type, candidate)
+      `, e(w));
+  }).nThen((w) => {
+    ctx.ch.modify(`INSERT INTO votes ${
+      selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`, 'voteFor')}
+      FROM ${coins.name()}
+      FINAL
+    `, e(w));
+  }).nThen((w) => {
+    ctx.ch.modify(`INSERT INTO votes ${
+      selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`, 'voteAgainst')}
+      FROM ${coins.name()}
+      FINAL
+    `, e(w));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS votes_for_mv TO votes AS
+      ${selectClause('stateTr', 'voteFor')} FROM ${coins.name()}
+    `, e(w));
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS votes_against_mv TO votes AS
+      ${selectClause('stateTr', 'voteAgainst')} FROM ${coins.name()}
+    `, e(w));
+  }).nThen((_) => {
+    if (ctx.recompute) {
+      ctx.snclog.info('--recompute recomputing votes table COMPLETE');
     }
     done();
   });
@@ -755,6 +834,10 @@ const createTables = (ctx, done) => {
     dbCreateAddrIncome(ctx, w((err) => {
       if (err) { return void error(err, w); }
     }));
+  }).nThen((w) => {
+    dbCreateVotes(ctx, w((err) => {
+      if (err) { return void error(err, w); }
+    }));
   }).nThen((_) => {
     done();
   });
@@ -921,6 +1004,7 @@ const getCoinbase = (ctx, txBlock, txout, value) => {
 const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs) /*:Tables.TxMinted_t*/ => {
   const { tx, block } = txBlock;
   const value = BigInt(txout.svalue);
+  const vote = typeof(txout.vote) !== 'undefined' ? txout.vote : {}
   const out = {
     address: txout.address,
     mintTxid: tx.txid,
@@ -931,7 +1015,8 @@ const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs
 
     seenTime:      (block) ? block.time : Math.floor(dateMs/1000),
     value:         value.toString(),
-    script:        '',
+    voteFor:       vote.for || '',
+    voteAgainst:   vote.against || '',
     coinbase:      getCoinbase(ctx, txBlock, txout, value),
     mintBlockHash: (block) ? block.hash : "",
     mintHeight:    (block) ? block.height : -1,
@@ -1036,7 +1121,8 @@ const rpcBlockToDbBlock = (block /*:RpcBlock_t*/, now) /*:Tables.tbl_blk_t*/ => 
     pcAnnDifficulty: block.packetcryptanndifficulty || 0,
     pcBlkDifficulty: block.packetcryptblkdifficulty || 0,
     pcVersion: (typeof(block.packetcryptversion) === 'undefined') ? -1 : block.packetcryptversion,
-    dateMs: now
+    dateMs: now,
+    networkSteward: (typeof(block.networksteward) === 'undefined') ? '' : block.networksteward,
   };
 };
 
@@ -1056,10 +1142,12 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
     // Then we can make the update.
     const now = +new Date();
     ch.query(`SELECT
+        address,
         mintTxid,
         mintIndex
       FROM (
         SELECT
+            address,
             mintTxid,
             mintIndex,
             spentBlockHash
@@ -1082,6 +1170,7 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
       }
       const spentToRevert /*:Array<Tables.TxSpent_t>*/ = ret.map((x) => {
         return {
+          address: x.address,
           mintTxid: x.mintTxid,
           mintIndex: x.mintIndex,
 
