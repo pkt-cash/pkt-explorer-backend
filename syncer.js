@@ -147,6 +147,8 @@ type RpcBlock_t = {
   packetcryptblkdifficulty?: number,
   sblockreward: string,
   networksteward?: string,
+  blocksuntilretarget: number,
+  retargetestimate: ?number,
 };
 type TxBlock_t = {
   tx: RpcTx_t,
@@ -180,6 +182,8 @@ const tbl_blk = DATABASE.add('tbl_blk', ClickHouse2.table/*::<Tables.tbl_blk_t>*
   pcVersion: types.Int8,
   dateMs: types.UInt64,
   networkSteward: types.String,
+  blocksUntilRetarget: types.Int32,
+  retargetEstimate: types.Float64,
 }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
 ).withOrder((fields) => [ fields.hash ]));
 
@@ -1123,6 +1127,8 @@ const rpcBlockToDbBlock = (block /*:RpcBlock_t*/, now) /*:Tables.tbl_blk_t*/ => 
     pcVersion: (typeof(block.packetcryptversion) === 'undefined') ? -1 : block.packetcryptversion,
     dateMs: now,
     networkSteward: (typeof(block.networksteward) === 'undefined') ? '' : block.networksteward,
+    blocksUntilRetarget: block.blocksuntilretarget,
+    retargetEstimate: (typeof(block.retargetestimate) === 'undefined') ? 0 : block.retargetestimate,
   };
 };
 
