@@ -848,8 +848,8 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
   let maxDate;
   let minDate;
   if (isDate(limit) && isDate(pgnum)) {
-    minDate = new Date(limit).toISOString().replace(/T.*$/, '');
-    maxDate = new Date(pgnum).toISOString().replace(/T.*$/, '');
+    minDate = new Date(limit);
+    maxDate = new Date(pgnum);
     if ((+maxDate) - (+minDate) > 2*365*MS_PER_DAY) {
       return void complete(sess, {
         code: 400,
@@ -860,22 +860,25 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
   } else {
     lim = limitFromPage(sess, limit, pgnum, `/address/${address}/income`, 2*365);
     if (!lim) { return; }
-    const begin = +new Date() - MS_PER_DAY;
-    let t = begin - (lim.maxLimit * (lim.pageNumber - 1) * MS_PER_DAY);
-    maxDate = new Date(t + MS_PER_DAY * 3).toISOString().replace(/T.*$/, '');
-    minDate = new Date(t - MS_PER_DAY * 3).toISOString().replace(/T.*$/, '');
+    // Exclude today because it will necessarily be incomplete
+    maxDate = new Date(+new Date() - MS_PER_DAY -
+      (lim.maxLimit * (lim.pageNumber - 1) * MS_PER_DAY));
+    minDate = new Date(+maxDate - (lim.maxLimit * MS_PER_DAY));
   }
 
   // If there are any days missing, we need to fill them in with zeros.
   // The database doesn't know what it doesn't know, but when we're asking for
   // income, nothing means zero.
   const out = [];
-  for (let d = +minDate; d < +maxDate; d += MS_PER_DAY) {
+  for (let d = +maxDate; d >= +minDate; d -= MS_PER_DAY) {
     out.push({
       date: (new Date(d)).toISOString().replace(/T.*$/, 'T00:00:00.000Z'),
       received: "0",
     });
   }
+
+  const minDateS = minDate.toISOString().replace(/T.*$/, '');
+  const maxDateS = maxDate.toISOString().replace(/T.*$/, '');
 
   sess.ch.query(`SELECT
       date,
@@ -883,8 +886,8 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     FROM addrincome
     WHERE
       address = '${e(address)}' AND
-      date >= toDate('${minDate}') AND
-      date <= toDate('${maxDate}')
+      date >= toDate('${minDateS}') AND
+      date <= toDate('${maxDateS}')
       ${mc}
     GROUP BY address, date
     ORDER BY date DESC
@@ -899,7 +902,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     if (csv) {
       sess.res.setHeader('Content-Type', 'text/csv');
       sess.res.setHeader('Content-Disposition', 'attachment; filename="' +
-        `income_${e(address)}_${minDate}_to_${maxDate}_mining_${mining}.csv"`);
+        `income_${e(address)}_${minDateS}_to_${maxDateS}_mining_${mining}.csv"`);
       const stringifier = MkCsvStringifier({
         header: [
           { id: 'date', title: 'date' },
