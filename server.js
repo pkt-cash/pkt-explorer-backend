@@ -804,6 +804,8 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     mc = 'AND coinbase = 0';
   } else if (mining === 'included') {
     mc = '';
+  } else {
+    mining = 'only'
   }
 
   // If there are any days missing, we need to fill them in with zeros.
@@ -846,8 +848,8 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     const next = lim.getNext(true);
     if (csv) {
       sess.res.setHeader('Content-Type', 'text/csv');
-      sess.res.setHeader('Content-Disposition',
-        `attachment; filename="income_${e(address)}_${minDate}_to_${maxDate}.csv`);
+      sess.res.setHeader('Content-Disposition', 'attachment; filename="' +
+        `income_${e(address)}_${minDate}_to_${maxDate}_mining_${mining}.csv`);
       const stringifier = MkCsvStringifier({
         header: [
           { id: 'date', title: 'date' },
@@ -867,8 +869,8 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     } else {
       complete(sess, null, {
         result: out,
-        prev: lim.prev + ((lim.prev && mining) ? `?mining=${mining}` : ''),
-        next: next + ((next && mining) ? `?mining=${mining}` : '')
+        prev: lim.prev + ((lim.prev && mining !== 'only') ? `?mining=${mining}` : ''),
+        next: next + ((next && mining !== 'only') ? `?mining=${mining}` : '')
       });
     }
   });
