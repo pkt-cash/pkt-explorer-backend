@@ -860,12 +860,13 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
         })
       }
       complete(sess, null, stringifier.getHeaderString()+stringifier.stringifyRecords(outCsv));
+    } else {
+      complete(sess, null, {
+        result: out,
+        prev: lim.prev + ((lim.prev && mining) ? `?mining=${mining}` : ''),
+        next: next + ((next && mining) ? `?mining=${mining}` : '')
+      });
     }
-    complete(sess, null, {
-      result: out,
-      prev: lim.prev + ((lim.prev && mining) ? `?mining=${mining}` : ''),
-      next: next + ((next && mining) ? `?mining=${mining}` : '')
-    });
   });
 };
 
