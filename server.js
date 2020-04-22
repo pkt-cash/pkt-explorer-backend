@@ -48,13 +48,14 @@ const BigInt = (x:any)=>0;
 
 const complete = (sess /*:Session_t*/, error /*:Error_t|null*/, data) => {
   const timeSpan = ((+new Date()) - sess.startTime) / 1000;
-  sess.res.setHeader('Content-Type', 'application/json');
   if (error) {
+    sess.res.setHeader('Content-Type', 'application/json');
     sess.res.statusCode = error.code;
     sess.res.end(JSON.stringify(error, null, '\t'));
   } else if (typeof(data) === 'string') {
     sess.res.end(data);
   } else {
+    sess.res.setHeader('Content-Type', 'application/json');
     sess.res.end(JSON.stringify(data, (_, x) => {
       // $FlowFixMe - new fancy js stuff
       if (typeof x !== 'bigint') { return x; }
@@ -844,6 +845,9 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     for (const el of out) { el.received = resultTbl[el.date] || "0"; }
     const next = lim.getNext(true);
     if (csv) {
+      sess.res.setHeader('Content-Type', 'text/csv');
+      sess.res.setHeader('Content-Disposition',
+        `attachment; filename="income_${e(address)}_${minDate}_to_${maxDate}.csv`);
       const stringifier = MkCsvStringifier({
         header: [
           { id: 'date', title: 'date' },
