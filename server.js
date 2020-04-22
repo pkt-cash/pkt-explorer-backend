@@ -136,9 +136,31 @@ const genericCoins = (sess, fn, whereClause, filter) => {
   });
 };
 
-const limitFromPage = (limit, pgnum, path, max) => {
-  const pageNumber = parseInt(pgnum, 10) || 1;
-  const maxLimit = Math.min(max, parseInt(limit, 10) || max);
+const isCannonicalPositiveIntOrZero = (num) => {
+  const n = Number(num);
+  if (!isFinite(n)) { return false; }
+  if (n < 0) { return false; }
+  if (Math.floor(n) !== n) { return false; }
+  if (String(n) !== String(num)) { return false; }
+  return true;
+};
+
+const limitFromPage = (sess, limit, pgnum, path, max) => {
+  if (typeof(limit) === 'undefined' || limit === '') { limit = max; }
+  if (typeof(pgnum) === 'undefined' || pgnum === '') { pgnum = 1; }
+  const pageNumber = parseInt(pgnum, 10);
+  const lim = parseInt(limit, 10)
+  if (!isCannonicalPositiveIntOrZero(pageNumber) ||
+    !isCannonicalPositiveIntOrZero(lim) ||
+    pageNumber === 0 || lim === 0
+  ) {
+    return void complete(sess, {
+      code: 400,
+      error: "page number and limit must be positive integers",
+      fn: "limitFromPage",
+    });
+  }
+  const maxLimit = Math.min(max, lim);
   let prev = "";
   if (pageNumber > 1) {
     prev = `${path}/${maxLimit}/${pageNumber - 1}`;
@@ -172,7 +194,8 @@ const hashOk = (sess, hash, fn) => {
 // v1 only
 const txDetail1 = (sess, txid, limit, pgnum) => {
   if (!hashOk(sess, txid, 'txDetail')) { return; }
-  const lim = limitFromPage(limit, pgnum, `/tx/${txid}/detail`, 500);
+  const lim = limitFromPage(sess, limit, pgnum, `/tx/${txid}/detail`, 500);
+  if (!lim) { return; }
   const whereClause = `mintTxid = '${e(txid)}' OR spentTxid = '${e(txid)}'`;
   const filter = (rows) => {
     const out = {
@@ -198,7 +221,8 @@ const txDetail1 = (sess, txid, limit, pgnum) => {
 
 const txCoins0 = (sess, txid, limit, pgnum) => {
   if (!hashOk(sess, txid, 'txCoins')) { return; }
-  const lim = limitFromPage(limit, pgnum, `/tx/${txid}/coins`, 500);
+  const lim = limitFromPage(sess, limit, pgnum, `/tx/${txid}/coins`, 500);
+  if (!lim) { return; }
   const whereClause = `mintTxid = '${e(txid)}' OR spentTxid = '${e(txid)}'`;
   const filter = (rows) => {
     const out = {
@@ -226,7 +250,8 @@ const txCoins0 = (sess, txid, limit, pgnum) => {
 
 const blockCoins0 = (sess, blockHash, limit, pgnum) => {
   if (!hashOk(sess, blockHash, 'blockCoins')) { return; }
-  const lim = limitFromPage(limit, pgnum, `/block/${blockHash}/coins`, 500);
+  const lim = limitFromPage(sess, limit, pgnum, `/block/${blockHash}/coins`, 500);
+  if (!lim) { return; }
   const subselect = `SELECT
       txid
     FROM tbl_blkTx
@@ -325,7 +350,8 @@ const queryBlockByNumber0 = (sess, number) => {
 };
 
 const chain = (sess, up, limit, pgnum) => {
-  const lim = limitFromPage(limit, pgnum, `/chain/${(up) ? 'up' : 'down'}`, 100);
+  const lim = limitFromPage(sess, limit, pgnum, `/chain/${(up) ? 'up' : 'down'}`, 100);
+  if (!lim) { return; }
   _queryBlocks(sess, 'chain', `hash IN (
     SELECT
         hash
@@ -349,7 +375,8 @@ const chain = (sess, up, limit, pgnum) => {
 
 
 const packetcryptStats = (sess, limit, pgnum) => {
-  const lim = limitFromPage(limit, pgnum, '/packetcrypt/stats', 50);
+  const lim = limitFromPage(sess, limit, pgnum, '/packetcrypt/stats', 50);
+  if (!lim) { return; }
   sess.ch.query(`SELECT
       toDate(time) AS date,
       any(pcVersion) pcVersion,
@@ -424,7 +451,8 @@ const packetcryptBlock = (sess, hash) => {
 };
 
 const richList = (sess, limit, pgnum) => {
-  const lim = limitFromPage(limit, pgnum, `/stats/richlist`, 500);
+  const lim = limitFromPage(sess, limit, pgnum, `/stats/richlist`, 500);
+  if (!lim) { return; }
   sess.ch.query(`SELECT
       address,
       sum(balance)     AS balance
@@ -675,7 +703,8 @@ const getTransactions = (sess, whereClause, done) => {
 
 const blockCoins1 = (sess, blockHash, limit, pgnum) => {
   if (!hashOk(sess, blockHash, 'blockCoins1')) { return; }
-  const lim = limitFromPage(limit, pgnum, `/block/${blockHash}/coins`, 50);
+  const lim = limitFromPage(sess, limit, pgnum, `/block/${blockHash}/coins`, 50);
+  if (!lim) { return; }
   getTransactions(sess, `txid IN (
     SELECT
         txid
@@ -747,7 +776,8 @@ const dedupCoins = (coins) => {
 };
 
 const addressCoins1 = (sess, address, limit, pgnum, mining) => {
-  const lim = limitFromPage(limit, pgnum, `/address/${address}/coins`, 50);
+  const lim = limitFromPage(sess, limit, pgnum, `/address/${address}/coins`, 50);
+  if (!lim) { return; }
   let mc = 'AND coinbase = 0';
   if (mining === 'only') {
     mc = 'AND coinbase > 0';
@@ -795,10 +825,16 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
+const DATE_REGEX = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+const isDate = (d) => {
+  if (!DATE_REGEX.test(d)) { return false; }
+  return !isNaN(new Date(d));
+}
+
 const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
   const r = getCoinInfo(sess);
   if (!r) { return; }
-  const lim = limitFromPage(limit, pgnum, `/address/${address}/income`, 100);
+  
   let mc = 'AND coinbase > 0';
   if (mining === 'excluded') {
     mc = 'AND coinbase = 0';
@@ -808,23 +844,38 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     mining = 'only'
   }
 
+  let lim;
+  let maxDate;
+  let minDate;
+  if (isDate(limit) && isDate(pgnum)) {
+    minDate = new Date(limit).toISOString().replace(/T.*$/, '');
+    maxDate = new Date(pgnum).toISOString().replace(/T.*$/, '');
+    if ((+maxDate) - (+minDate) > 2*365*MS_PER_DAY) {
+      return void complete(sess, {
+        code: 400,
+        error: "maximum date range is 2 years",
+        fn: "addressIncome1"
+      });
+    }
+  } else {
+    lim = limitFromPage(sess, limit, pgnum, `/address/${address}/income`, 2*365);
+    if (!lim) { return; }
+    const begin = +new Date() - MS_PER_DAY;
+    let t = begin - (lim.maxLimit * (lim.pageNumber - 1) * MS_PER_DAY);
+    maxDate = new Date(t + MS_PER_DAY * 3).toISOString().replace(/T.*$/, '');
+    minDate = new Date(t - MS_PER_DAY * 3).toISOString().replace(/T.*$/, '');
+  }
+
   // If there are any days missing, we need to fill them in with zeros.
   // The database doesn't know what it doesn't know, but when we're asking for
   // income, nothing means zero.
-  //
-  // So we're going to start with today and count back lim.maxLimit * lim.pageNumber
-  // and then start populating the output with results until we have populated maxLimit
-  // results. If the db has a result then we use it, otherwise we enter zero.
-  const begin = +new Date() - MS_PER_DAY;
-  let t = begin - (lim.maxLimit * (lim.pageNumber - 1) * MS_PER_DAY);
-  const maxDate = new Date(t + MS_PER_DAY * 3).toISOString().replace(/T.*$/, '');
   const out = [];
-  for (let i = 0; i < lim.maxLimit; i++) {
-    const ts = (new Date(t)).toISOString().replace(/T.*$/, 'T00:00:00.000Z');
-    out.push({ date: ts, received: "0" });
-    t -= MS_PER_DAY;
+  for (let d = +minDate; d < +maxDate; d += MS_PER_DAY) {
+    out.push({
+      date: (new Date(d)).toISOString().replace(/T.*$/, 'T00:00:00.000Z'),
+      received: "0",
+    });
   }
-  const minDate = new Date(t - MS_PER_DAY * 3).toISOString().replace(/T.*$/, '');
 
   sess.ch.query(`SELECT
       date,
@@ -845,7 +896,6 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     const resultTbl = {};
     for (const el of ret) { resultTbl[el.date] = el.received; }
     for (const el of out) { el.received = resultTbl[el.date] || "0"; }
-    const next = lim.getNext(true);
     if (csv) {
       sess.res.setHeader('Content-Type', 'text/csv');
       sess.res.setHeader('Content-Disposition', 'attachment; filename="' +
@@ -867,17 +917,21 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
       }
       complete(sess, null, stringifier.getHeaderString()+stringifier.stringifyRecords(outCsv));
     } else {
-      complete(sess, null, {
-        result: out,
-        prev: lim.prev + ((lim.prev && mining !== 'only') ? `?mining=${mining}` : ''),
-        next: next + ((next && mining !== 'only') ? `?mining=${mining}` : '')
-      });
+      const res = {};
+      res.result = out;
+      if (lim) {
+        const next = lim.getNext(true);
+        res.prev = lim.prev + ((lim.prev && mining !== 'only') ? `?mining=${mining}` : '');
+        res.next = next + ((next && mining !== 'only') ? `?mining=${mining}` : '')
+      }
+      complete(sess, null, res);
     }
   });
 };
 
 const nsCandidates = (sess, limit, pgnum) => {
-  const lim = limitFromPage(limit, pgnum, `/ns/candidates`, 100);
+  const lim = limitFromPage(sess, limit, pgnum, `/ns/candidates`, 100);
+  if (!lim) { return; }
   sess.ch.query(`SELECT
       candidate,
       sumIf(votes, type = 'for') AS votesFor,
@@ -946,7 +1000,8 @@ const ns = (sess) => {
 };
 
 const addressCoins = (sess, address, limit, pgnum) => {
-  const lim = limitFromPage(limit, pgnum, `/address/${address}/coins`, 10);
+  const lim = limitFromPage(sess, limit, pgnum, `/address/${address}/coins`, 10);
+  if (!lim) { return; }
   const ch = sess.ch.withSession();
   const tempCoins = `temp_coins_${ch.sessionId()}`;
 
@@ -1146,14 +1201,6 @@ const enabledChains = (sess) => {
 };
 
 const isHash = (input) => /^[0-9a-fA-F]{64}$/.test(input);
-const isCannonicalPositiveIntOrZero = (num) => {
-  const n = Number(num);
-  if (!isFinite(n)) { return false; }
-  if (n < 0) { return false; }
-  if (Math.floor(n) !== n) { return false; }
-  if (String(n) !== String(num)) { return false; }
-  return true;
-};
 const isValid = (sess, input) => {
   const result = { isValid: true, type: 'invalid' };
   if (isHash(input) || isCannonicalPositiveIntOrZero(input)) {
