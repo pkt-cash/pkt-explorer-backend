@@ -849,7 +849,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     if (csv) {
       sess.res.setHeader('Content-Type', 'text/csv');
       sess.res.setHeader('Content-Disposition', 'attachment; filename="' +
-        `income_${e(address)}_${minDate}_to_${maxDate}_mining_${mining}.csv`);
+        `income_${e(address)}_${minDate}_to_${maxDate}_mining_${mining}.csv"`);
       const stringifier = MkCsvStringifier({
         header: [
           { id: 'date', title: 'date' },
