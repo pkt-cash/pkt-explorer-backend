@@ -8,6 +8,7 @@ const Querystring = require('querystring');
 const nThen = require('nthen');
 const Bs58Check = require('bs58check');
 const Bech32 = require('bech32');
+const MkCsvStringifier = require('csv-writer').createObjectCsvStringifier;
 
 const ClickHouse = require('./lib/clickhouse.js');
 const Log = require('./lib/log.js');
@@ -51,6 +52,8 @@ const complete = (sess /*:Session_t*/, error /*:Error_t|null*/, data) => {
   if (error) {
     sess.res.statusCode = error.code;
     sess.res.end(JSON.stringify(error, null, '\t'));
+  } else if (typeof(data) === 'string') {
+    sess.res.end(data);
   } else {
     sess.res.end(JSON.stringify(data, (_, x) => {
       // $FlowFixMe - new fancy js stuff
@@ -791,7 +794,9 @@ const addressCoins1 = (sess, address, limit, pgnum, mining) => {
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-const addressIncome1 = (sess, address, limit, pgnum, mining) => {
+const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
+  const r = getCoinInfo(sess);
+  if (!r) { return; }
   const lim = limitFromPage(limit, pgnum, `/address/${address}/income`, 100);
   let mc = 'AND coinbase > 0';
   if (mining === 'excluded') {
@@ -838,6 +843,24 @@ const addressIncome1 = (sess, address, limit, pgnum, mining) => {
     for (const el of ret) { resultTbl[el.date] = el.received; }
     for (const el of out) { el.received = resultTbl[el.date] || "0"; }
     const next = lim.getNext(true);
+    if (csv) {
+      const stringifier = MkCsvStringifier({
+        header: [
+          { id: 'date', title: 'date' },
+          { id: 'received', title: 'received' },
+          { id: 'receivedCoins', title: 'receivedCoins' },
+        ]
+      });
+      const outCsv = [];
+      for (const el of out) {
+        outCsv.push({
+          date: el.date,
+          received: el.received,
+          receivedCoins: Number(el.received) / r.unitsPerCoin
+        })
+      }
+      complete(sess, null, stringifier.getHeaderString()+stringifier.stringifyRecords(outCsv));
+    }
     complete(sess, null, {
       result: out,
       prev: lim.prev + ((lim.prev && mining) ? `?mining=${mining}` : ''),
@@ -868,7 +891,7 @@ const nsCandidates = (sess, limit, pgnum) => {
   });
 };
 
-const ns = (sess) => {
+const getCoinInfo = (sess) => {
   let r = Rewards.pkt;
   if (sess.config.blockRewards) {
     r = Rewards[sess.config.blockRewards];
@@ -880,6 +903,12 @@ const ns = (sess) => {
       });
     }
   }
+  return r;
+}
+
+const ns = (sess) => {
+  const r = getCoinInfo(sess);
+  if (!r) { return; }
   sess.ch.query(`WITH (
       SELECT
           networkSteward,
@@ -1233,7 +1262,8 @@ const onReq = (ctx, req, res) => {
           case undefined: return void address1(sess, addr);
           // /api/PKT/pkt/address/:addr/coins
           case 'coins': return void addressCoins1(sess, addr, parts[3], parts[4], query.mining);
-          case 'income': return void addressIncome1(sess, addr, parts[3], parts[4], query.mining);
+          case 'income': return void addressIncome1(
+            sess, addr, parts[3], parts[4], query.mining, query.csv);
         }
       } break;
 
