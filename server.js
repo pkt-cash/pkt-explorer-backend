@@ -148,11 +148,9 @@ const isCannonicalPositiveIntOrZero = (num) => {
 const limitFromPage = (sess, limit, pgnum, path, max) => {
   if (typeof(limit) === 'undefined' || limit === '') { limit = max; }
   if (typeof(pgnum) === 'undefined' || pgnum === '') { pgnum = 1; }
-  const pageNumber = parseInt(pgnum, 10);
-  const lim = parseInt(limit, 10)
-  if (!isCannonicalPositiveIntOrZero(pageNumber) ||
-    !isCannonicalPositiveIntOrZero(lim) ||
-    pageNumber === 0 || lim === 0
+  if (!isCannonicalPositiveIntOrZero(pgnum) ||
+    !isCannonicalPositiveIntOrZero(limit) ||
+    pgnum === 0 || limit === 0
   ) {
     return void complete(sess, {
       code: 400,
@@ -160,7 +158,8 @@ const limitFromPage = (sess, limit, pgnum, path, max) => {
       fn: "limitFromPage",
     });
   }
-  const maxLimit = Math.min(max, lim);
+  const pageNumber = parseInt(pgnum, 10);
+  const maxLimit = Math.min(max, parseInt(limit, 10));
   let prev = "";
   if (pageNumber > 1) {
     prev = `${path}/${maxLimit}/${pageNumber - 1}`;
@@ -502,6 +501,8 @@ const addressBalance = (sess, address) => {
     const val = ret[0];
     val.recvCount = Number(val.recvCount);
     val.spentCount = Number(val.spentCount);
+    val.balanceCount = Number(val.balanceCount);
+    val.mineCount = Number(val.mineCount);
     return void complete(sess, null, val);
   });
 };
@@ -561,8 +562,8 @@ type GetTransactions_Tx_t = Tables.tbl_tx_t & {
   blockHash?: string,
   blockTime?: string,
   blockHeight?: number,
-  input: Array<{ address: string, value: string, spentcount: number, unconfirmed: bool }>,
-  output: Array<{ address: string, value: string, spentcount: number, unconfirmed: bool }>,
+  input: Array<{ address: string, value: string, spentcount: number }>,
+  output: Array<{ address: string, value: string, spentcount: number }>,
 };
 */
 
@@ -578,7 +579,7 @@ const getTransactions = (sess, whereClause, done) => {
     `, w((err, ret) => {
       if (err || !ret) {
         w.abort();
-        return void done(dbError(err, "queryTx"));
+        return void done(dbError(err, "getTransactions"));
       } else {
         fixDates(ret, ['firstSeen']);
         for (const tx of ret) {
@@ -674,7 +675,6 @@ const getTransactions = (sess, whereClause, done) => {
               out.push({
                 address: addr,
                 value: value.toString(),
-                unconfirmed: v.unconfirmed !== BigInt(0),
                 spentcount: v.spentcount,
               });
             }
@@ -738,7 +738,33 @@ const txByTxid = (sess, txid) => {
   });
 };
 
-const dailyTransactions = (sess) => {
+const dailyTransactions1 = (sess, limit, pgnum) => {
+  const lim = limitFromPage(sess, limit, pgnum, `/stats/daily-transactions`, 30);
+  if (!lim) { return; }
+  sess.ch.query(`SELECT
+      toDate(firstSeen)       AS date,
+      count()                 AS transactionCount
+    FROM tbl_tx
+    GROUP BY toDate(firstSeen)
+    ORDER BY toDate(firstSeen) DESC
+    LIMIT ${lim.limit}
+  `, (err, ret) => {
+    if (err || !ret) {
+      return void complete(sess, dbError(err, "dailyTransactions1"));
+    }
+    fixDates(ret, ['date']);
+    for (const x of ret) {
+      x.transactionCount = Number(x.transactionCount);
+    }
+    return void complete(sess, null, {
+      results: ret,
+      prev: lim.prev,
+      next: lim.getNext(ret.length)
+    });
+  });
+};
+
+const dailyTransactions0 = (sess) => {
   sess.ch.query(`SELECT
       toDate(firstSeen)       AS date,
       count()                 AS transactionCount
@@ -748,7 +774,7 @@ const dailyTransactions = (sess) => {
     LIMIT 1,30
   `, (err, ret) => {
     if (err || !ret) {
-      return void complete(sess, dbError(err, "dailyTransactions"));
+      return void complete(sess, dbError(err, "dailyTransactions0"));
     }
     fixDates(ret, ['date']);
     for (const x of ret) {
@@ -893,7 +919,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
     ORDER BY date DESC
   `, (err, ret) => {
     if (err || !ret) {
-      return void complete(sess, dbError(err, "queryTx"));
+      return void complete(sess, dbError(err, "addressIncome1"));
     }
     fixDates(ret, ['date']);
     const resultTbl = {};
@@ -921,7 +947,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
       complete(sess, null, stringifier.getHeaderString()+stringifier.stringifyRecords(outCsv));
     } else {
       const res = {};
-      res.result = out;
+      res.results = out;
       if (lim) {
         const next = lim.getNext(true);
         res.prev = lim.prev + ((lim.prev && mining !== 'only') ? `?mining=${mining}` : '');
@@ -948,7 +974,7 @@ const nsCandidates = (sess, limit, pgnum) => {
       return void complete(sess, dbError(err, "nsCandidates"));
     }
     complete(sess, null, {
-      result: ret,
+      results: ret,
       prev: lim.prev,
       next: lim.getNext(ret.length),
     });
@@ -1102,7 +1128,9 @@ const addressCoins = (sess, address, limit, pgnum) => {
           *,
           toString(mintBlockHash)  AS mintBlockHash,
           toString(spentTxid)      AS spentTxid,
-          toString(spentBlockHash) AS spentBlockHash
+          toString(spentBlockHash) AS spentBlockHash,
+          prevState,
+          currentState
         FROM coins
         WHERE
           mintTxid IN (SELECT mintTxid FROM ${tempCoins}) OR
@@ -1127,6 +1155,9 @@ const addressCoins = (sess, address, limit, pgnum) => {
       let maxMint = 0;
       for (const c of data) {
         if (!coinTx[c.mintTxid + '|' + c.mintIndex]) { continue; }
+        delete c['coins.spentTxid'];
+        delete c['coins.spentBlockHash'];
+        delete c['coins.mintBlockHash'];
         coins.unshift(c);
         if (maxMint < c.mintTime) { maxMint = c.mintTime; }
         coinMint[c.mintTxid] = true;
@@ -1303,7 +1334,7 @@ const onReq = (ctx, req, res) => {
       case 'stats': switch (parts[1]) {
         // /api/PKT/pkt/stats/richlist
         case 'richlist': return void richList(sess, parts[2], parts[3]);
-        case 'daily-transactions': return void dailyTransactions(sess);
+        case 'daily-transactions': return void dailyTransactions1(sess, parts[2], parts[3]);
       } break;
 
       case 'ns': switch(parts[1]) {
@@ -1370,7 +1401,7 @@ const onReq = (ctx, req, res) => {
     case 'stats': switch (parts[1]) {
       // /api/PKT/pkt/stats/richlist
       case 'richlist': return void richList(sess, parts[2], parts[3]);
-      case 'daily-transactions': return void dailyTransactions(sess);
+      case 'daily-transactions': return void dailyTransactions0(sess);
 
       // /api/PKT/pkt/stats/coins/:blocknum
       case 'coins': return statsCoins(sess, parts[2]);
