@@ -199,6 +199,7 @@ export type Apiv1_packetcryptStats_result = {
 };
 export type Apiv1_packetcryptStats = RpcError_t | Apiv1_packetcryptStats_result;
 */
+
 const Apiv1_enabledChains_sample /*:Apiv1_enabledChains*/ = [
 	{
 		"chain": "PKT",
@@ -214,11 +215,11 @@ const Apiv1_richlist_result_sample /*:Apiv1_richlist_result*/ = {
 		},
 		{
 			"address": "pkt1q2sj8djct9e4w0a0770l0gtquq6m4s4qd7fk04t",
-			"balance": "134091947718497471"
+			"balance": "134170461490488544"
 		},
 		{
 			"address": "pkt1q3rnwa8jw0ucs2qgxlrm06kfxwljlqxpzr85t9r30jv43fj7j29dquswyxt",
-			"balance": "121469004804487577"
+			"balance": "121480900830546791"
 		}
 	],
 	"prev": "",
@@ -228,7 +229,7 @@ module.exports.Apiv1_richlist_result_sample = Apiv1_richlist_result_sample;
 const Apiv1_ns_sample /*:Apiv1_ns*/ = {
 	"networkSteward": "pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2",
 	"votesAgainst": "68433255",
-	"votesNeeded": "759278173217176682"
+	"votesNeeded": "759352450843302690"
 };
 module.exports.Apiv1_ns_sample = Apiv1_ns_sample;
 const Apiv1_nsCandidates_sample /*:Apiv1_nsCandidates*/ = {
@@ -250,16 +251,16 @@ const Apiv1_nsCandidates_sample /*:Apiv1_nsCandidates*/ = {
 module.exports.Apiv1_nsCandidates_sample = Apiv1_nsCandidates_sample;
 const Apiv1_address_sample /*:Apiv1_address*/ = {
 	"unconfirmedReceived": "0",
-	"confirmedReceived": "304784358867295153",
-	"balance": "97933973855694620",
+	"confirmedReceived": "304813953858954700",
+	"balance": "97930685523287990",
 	"spending": "0",
 	"spent": "85006797353036390",
-	"burned": "121843587658564143",
+	"burned": "121876470982630320",
 	"recvCount": 558,
-	"mineCount": "373253",
+	"mineCount": 373294,
 	"spentCount": 98517,
-	"balanceCount": "132653",
-	"mined24": "1009117032684066"
+	"balanceCount": 132653,
+	"mined24": "1015613494267869"
 };
 module.exports.Apiv1_address_sample = Apiv1_address_sample;
 const Apiv1_addressCoins_sample /*:Apiv1_addressCoins*/ = {
@@ -414,943 +415,786 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pkt1q2sj8djct9e4w0a0770l0gtquq6m4s4qd7fk04t",
 					"value": "1914970048561",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2",
 					"value": "721829064867",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1q3rnwa8jw0ucs2qgxlrm06kfxwljlqxpzr85t9r30jv43fj7j29dquswyxt",
 					"value": "290146977054",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p96XfSnLNM9etQWVvzhUqkqBJwJKs3Lfdx",
 					"value": "116058790821",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pNNzRrn6d6S2yZpTedBsWFVj9qAWeUAV49",
 					"value": "43750443016",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p6hYxFZY1gCMGB2KzuVMGWfnsVLwk4nPu3",
 					"value": "43124844895",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7FjSmF7A51bAKEfuKe5fDG2t7QrWjhmqE",
 					"value": "42276288566",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pGhHJ5Tz9RapJ4BMw371xYKCUsNh9i9Beo",
 					"value": "41508547125",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pENvxqTiPTieCtEMkHv427o5XWpdsDj1F1",
 					"value": "36952607783",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pDXNYx4xTY28p7tcYJULzrBA6wxXz9Jxbk",
 					"value": "33933270171",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p9kKSSkmzQfrtzKySgqDiWwVmwYYjEqVPe",
 					"value": "32952270801",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pDEn6kwubA3JNcFeEBWLLdM8bxmMKz6oyB",
 					"value": "23052446955",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pKHsMf6Eg8YB2jTJUpdRbCj7RpvpMpYRkU",
 					"value": "19990865786",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pSYr1sswZobgBWQCRqZXFUpoUyJJTgJ9Ho",
 					"value": "5501473031",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pSH1jgkuEWpPp6CLeN9VVq2LRhd9eH5c7z",
 					"value": "3441588173",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pRoX4rXvd9JKL8ic4P1X3eDXZkFNk9ai6G",
 					"value": "2961626258",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pFAWnpyFGRh9MyyNsD17BYdtFaKPSa2QLH",
 					"value": "2274255611",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p5ZZyD4bWycUqGia35BwFybHFvUCQsNsEt",
 					"value": "2255580827",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p8vY35P6houwhpKhg4bgTykv7RwEZXrw2j",
 					"value": "2217755500",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pUB6AQioYHGR1Unvh5Gqq4ha38NCi1Nu1t",
 					"value": "2217748292",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pUPZ7vN1gQPQcY3GNDWbMzVdGLfFhZ8xTD",
 					"value": "2214924968",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pTySLBnjZaqch7B46hdT7XrsmZCrxJxndT",
 					"value": "2195418806",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pGFgw2yQHQXfqdnRpWqxKRbP1D35YZ9kYX",
 					"value": "2189245939",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pDjXjjeCpwUX1a8QNHn2Rwmp3auaYEBjk8",
 					"value": "2185096254",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pTPwhCc4d5RmR9t4s7umKHZ4eJJzaBHRpc",
 					"value": "2182806359",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pUfDAPYttQo2SsjFyMPbpVNgwzjraGPZeX",
 					"value": "2171859072",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p9Pa8bjKFR6tm6Ub9Jq7RTg1j1DTZ6AsUq",
 					"value": "2169687569",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pFm2FuHf7EwtyM88kbyqGo7AbJSjhgXdZN",
 					"value": "2153193899",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pUoZGEJo2Dcw73tNfAiocZGBQg5xUGf22w",
 					"value": "2137969578",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pH7bW2rpxzzwQvFNhuTsZu6pnxaYuPcnAa",
 					"value": "2126683492",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pGGBPA6pPQygrkYyRPPJXbasxhEjvZm2rB",
 					"value": "2121113735",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pP2wH52VRMSqhdskALruojqtZQe577Q4bd",
 					"value": "2119128999",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pAKm5o1NnXct7QxscuUBsVz7WNJysit1Ea",
 					"value": "2118412956",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pEQt3KB1FSd1wG5K7qCEZn2sDHxsbH7Mgt",
 					"value": "2116175923",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pNZrb6dHks4ALp9kv9GwxM4RQFXd79VoZQ",
 					"value": "2115476699",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p8wHu3mr41LTb9BqRgeuirYx8F8N3Cc1tK",
 					"value": "2110647014",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pGJM4dnz4VK6yNRN7baSgEemNQKCXpw83L",
 					"value": "2110087155",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pJsiQv9Q23pfy8AWDdHbufQAuUm6kGf8v4",
 					"value": "2107732383",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pS4ACZFjp2MX7sdpGV5NSN6Hfbg8xNvBs7",
 					"value": "2104281921",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pJMETYFhJTveEkZ4gRH6nijpVPzCbrN7yt",
 					"value": "2092815623",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p6fG8ujbu55JDG8ikcUxDpvaKrS3exLwv3",
 					"value": "2089110462",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pGBYdRYajH1WsTDUE4JwUVXcDuJDKzhusC",
 					"value": "2084977596",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7mpDwkYCxm2C8mK9fyj3zokruxTv5cHkD",
 					"value": "2082204732",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pMmEnaVkWuopf6pSJFU8PgCQKJtFSyMn1d",
 					"value": "2081140279",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p6sRUcs6muokogA2CKxpJ2kCYYYZ548TKU",
 					"value": "2080505932",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pBNLP8kiKjMMVqrKxJvo2C3vqxAPo6oXLB",
 					"value": "2077718651",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pB9DjpytbeqJKkWyTpMNQGoH1RsUpe1uVz",
 					"value": "2074912148",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pKBsvWJj4tycRETVwSRmi1kGnv1bEaBxAG",
 					"value": "2074597377",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pEAdaSfF4iLxyRw8PVuQ3HcBJxf51TU7M6",
 					"value": "2070459706",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "p6zeEdBvJzmRLXAutuJ1y53Ujz7bkR3Q3e",
 					"value": "2068816171",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pHnq9XZZAUsp4nbZ385nwhY7FSTRzmUEty",
 					"value": "2059651783",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p6kADP6jaA7GCUL5EvUhcrRb3T7gWK5CEF",
 					"value": "2050107748",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pUh4UFA4b59h3iJfv8WEfEPL1NfAVbezwn",
 					"value": "2043930076",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pUHP7FfmPmybvoJhBd3x62qE4iyYT8BaCh",
 					"value": "2039840462",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7zJUDmw8rRK7RdPcNNUXscJDSXbCHqhEs",
 					"value": "2033905475",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p5f3sRpjsRKRx4mz4t8Lbm5MRxpJnpo4V9",
 					"value": "2032242718",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pQfFazJqKXiM5gnHybRzT7NHE2XJvnKv3s",
 					"value": "2031543495",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pTmkEh5UJE5nW4oSDQRL9e1mzJZUEYkLwg",
 					"value": "2029878335",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7zB7vsfMHjEf65AbtE6ATe4YmPNXzoqzF",
 					"value": "2025781512",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pBpeTjtvRohP3pEoT9nthvboP6JaNsKsEL",
 					"value": "2021518894",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pJvYXzhs5g9zBdfakdaM6UjfrZatiK1idp",
 					"value": "2020215107",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pUTcRKHgc4BaFSfPUBFggRoZTTrdAw4r9b",
 					"value": "2020067586",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p8oWYwKSNLchMMXy3h1DcahKTFpRG8VFTJ",
 					"value": "2019731190",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pEDqeBSqHacDnXdmfmQzNTs19D5V7vbYSF",
 					"value": "2016886241",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pQzpipC9Nwq9kEiV6hHyewt8ryEvkfafMm",
 					"value": "2015451752",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pDS4WAiqABqmJBZbwFZkKaD6ccskHBQVmm",
 					"value": "2014627582",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p8wT3rxJDJ5Ha5M52mUwKFXYWujEF7FSJJ",
 					"value": "2009134716",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p79x46yPaN6a4ufPrVnJWxUtns1TMsu7fx",
 					"value": "2007765103",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pBmc5hGVzSvhEyBNdkE4ai5firyqpBiuEw",
 					"value": "2006311392",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pUNTCch3mocadQCJbsA7unNTxm54N4ErQs",
 					"value": "2006164819",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7sgpZH4bvjhi6CSq1kVyS9dczkHiB474R",
 					"value": "2004629412",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pHKgy6e5nreTAfgh7qqZK3bXKjfzyDXmX6",
 					"value": "2000261070",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pJ3fGP8fAT9V2qK9gAcCBSa8aLgCTahhSo",
 					"value": "2000095275",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pHJqenCwadPS1hrqMNBkjETR8nqn2aWSkN",
 					"value": "2000015981",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pFLM2fDJDLtmX7dRmHje5LYHam8B6jTF97",
 					"value": "1995868699",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pGhnavTgpj1EmtjKB35GLhBo2X1jmxgvz5",
 					"value": "1995623611",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pU8emqk21gwFeeDoeDEiNvbjcn96dcHUqj",
 					"value": "1989558871",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pQDh59KpPAWcMFjgXAis1nfjacRVCKKzJi",
 					"value": "1975802678",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pA98XKWLf3huPvdo2zM4VY7oACMDLx3fqE",
 					"value": "1970470801",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pGMzwYKE6xhXgkWCFdVfHnrKeiR7D2YTWN",
 					"value": "1969384723",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pJWpYKqog4BFfdx48NpEeLGJKGFg9oGYb5",
 					"value": "1959533126",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pJ37XUQArSE92B9Brg76se63F5X5MK5znh",
 					"value": "1958797860",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pRFwuQwhjsSTM1n7LQJxDXhsJEUq8KUp1f",
 					"value": "1939993324",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p78ZFwe7o5s9WXH7UZ5qAWou4NgZzYrQKa",
 					"value": "1939073040",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7moN8njSPHfzM9Ba3TYUrtf5WoTKeJV8w",
 					"value": "1909366871",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7GpHCxibb65y2fL8ahx9HXraycLk9AiHL",
 					"value": "1906471462",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pEeCHsnEybhzMLxMvmfYVeiLEfsKUyBPaQ",
 					"value": "1901990187",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "p7hAmtMAXFetUtmfK3HtZYE6e2AXe4SAQU",
 					"value": "1892568696",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pBr6HYvUDuzxjdLAGMZxm89Rn968uBNywu",
 					"value": "1889805443",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pPtsDqKqsFhCQz5iNU34cYqef4sWbxTxKk",
 					"value": "1889262404",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pTaZvLWfkRhwYrsbqa4Vymsni1dXbf9wBf",
 					"value": "1883264944",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pKXzVKrgwuEibGtP6tgiMxu9krgjvyX4td",
 					"value": "1877039215",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pSuuXjc284QAp1CkWRWNGZRUW5gNSP36R6",
 					"value": "1862381961",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pF5WhLxr72WAN2i54k9Av2FBXG84g2dqWa",
 					"value": "1809228990",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pHZYwr7b1fmZ4YNEur6osRFSRUstqvKFnB",
 					"value": "1804944747",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pKAPEW5sfJ8XaytZ47gG4kTmVKXjMTwpPg",
 					"value": "1782238017",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pErVx2FcFN1DqaGNShxKnkhGBFwXYh4Dnz",
 					"value": "1779996178",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pGiDeDPH4Kbc7piERwZEv7uRozqthuRMaW",
 					"value": "1772211013",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pE9aBiFkXya47LHQAL2QEbj9qMqUe9FzeM",
 					"value": "1767426982",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pTZqMpbKmUFHvAKcnyLmbVmer1RBvGgPy1",
 					"value": "1764673340",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pHP8MxqVHk2VXKouAEb3Mf6oKs3ggkKNZx",
 					"value": "1761482384",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pKHufhwm4cEwu1vAqDUzryeqj71sum9bxx",
 					"value": "1758596587",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pL4gZHh4tcgwa2F5h1M2Wp2UDgueUt9B4V",
 					"value": "1752130575",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pQiSsWHWdymNDXF84DUtgPEiLsWcsm7Pbs",
 					"value": "1748824283",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pAxH6x6Vp2pvM1H4BEa8vRW5cM8xktKPVH",
 					"value": "1746938063",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pRMtuSdaLwegedcMit6vtCfzqH4iLWTnL3",
 					"value": "1741452405",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pR9xx5HjLb9TqRD4SeyUHEz5MgQ9SdJpEh",
 					"value": "1740885337",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pKkPyZvvYhcNd6CqShqq9neL2WXoEvvCvS",
 					"value": "1737401236",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pSjWprtwJbo3dKAQjmSmV5ZCpSJg6jdG7N",
 					"value": "1735726464",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pBJmTba3FTD6LH1qWCRBqey3MmoDGkXxfB",
 					"value": "1733025685",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pSHL4udYaDPkwenG61f3uByHmMeS4xVv8U",
 					"value": "1724099177",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pDTBomM3fS9i7EsceS39rh61LD75DjGkN8",
 					"value": "1718212247",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pNUtoHLyPrwtdnFd6yM53TLkhHXsCpi6c3",
 					"value": "1713529134",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pTtkQLWtdknxbRAkaouXh1W6e5Fv12e32K",
 					"value": "1712195564",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pB1EdV7d9kyQGZL7th1XruqkoD6c83mnpf",
 					"value": "1696915977",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pQt196aWMsjiBNtmWX26vfEBSQwNYtd1W2",
 					"value": "1694998520",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pAas7pV7adaMw7C4vaCTsng6yQGo6gJXyg",
 					"value": "1689731520",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "1683015614",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7jMZJuwBmQLVafmRLPWHwAdG9r1NtteBL",
 					"value": "1683008406",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pBDa7tS3MBGAu6PdoMuyoeuZX8tFfSiZtb",
 					"value": "1677107059",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "p5mmkqcXCBSUYoZMwc6idMLqQcKBUjnpEa",
 					"value": "1673949742",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pJaDbF68m5c1VHyodMrYT9r1GcnYRJTWfE",
 					"value": "1669672707",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pFh4Z3vtHgxqT9AZjW478uQ9sgbyeZfDRW",
 					"value": "1668442459",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pLofjEbedWJJneyRYUmd1hHh6282aCjUR2",
 					"value": "1667464508",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pKFYxkGnBvECkFqGFR6wJkBvc2jVqnpJ1c",
 					"value": "1667046416",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pJKGsDRU5MShvWdX5BgDxSQrcoDSB4oVhp",
 					"value": "1661459839",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pH5TsMDKjLqcfb3eceMewSYAX9zrxrFk86",
 					"value": "1661202737",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pEgbGnTBwetCzzehT4CexS7ucW4VnrCiZR",
 					"value": "1660787047",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pE8JwUkTX1i9ZeKvVRn7ygYeXj29UWES2k",
 					"value": "1660126269",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pTEYd629oXnAftnmKccZdP6LG6Bt94Sf1j",
 					"value": "1658763866",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pDfqWb8zU67gUHxiBP6RMJgdLiPJMWWa1D",
 					"value": "1654316230",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pFg649vAsK1ZhVSLZaRfXXH2jRsouY2JoM",
 					"value": "1652530928",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p8ph72kX2ed3A9y8hBfdXNfbbEsknTTpb7",
 					"value": "1650197782",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pKFtAhmjhMaVFAvQywR27YEvfZpA3fR8GL",
 					"value": "1644781806",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p8iuSBJMHuWQL74xhVNA2EuqGPcas4nUYf",
 					"value": "1632837345",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pD9TSdtuAnsALquaoBkkYUrbTLzdQss2yS",
 					"value": "1626224761",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p78D5XccDYAi5puZWC6epG4y6uAkFy7UHa",
 					"value": "1609767788",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pJGuhzvaVfam7Dm3Lweyej9JnV2RapqszM",
 					"value": "1607314500",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pSBRvDc9pVTsAHCkS1NdRnTE2JqB1ucPkw",
 					"value": "1598224600",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pPaj3AAVtTj4oHry3zHhGw2ZBPeSBgiRYh",
 					"value": "1587986147",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pRfHeDGDNmyaZg1En4h44m3xmKFmDqdEcU",
 					"value": "1587832366",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pCGF23JLECkuQ1D7b3XJWa5SRNGyRJ81zM",
 					"value": "1564092420",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pLGAHaeSL3Qq1DXP14LVpE35dnSaegZCrk",
 					"value": "1525469354",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pFPMDuvbXxawuSpXvPS8gjnSCJgy8AjsYV",
 					"value": "1480586919",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p6JcfLWHxfSmSJZUrrxXtP4t1cLNpAvexm",
 					"value": "1464586484",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pNi1cMNrVgReBpznvg6rRinqWwwdFMt6N8",
 					"value": "1393777529",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7EP5UdZJZpTptiNt468J9JPfqhNP63QtN",
 					"value": "1383137804",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pBYK72pzjuTvbPLywbzbhG348DcqgRJATQ",
 					"value": "1026089493",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qjfqvwcf3w6ukyzckhgr8pglcvu9s05vlw5ufsl",
 					"value": "639887503",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qwm8jxv94rlyz0hkm23sszz2lulsvf50k0agx4w",
 					"value": "329834515",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "p7A4miQjxjmLPfbGyqRqyqTb5be9p527zS",
 					"value": "269992069",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pHZF7gt7HbfcuaQFkjDbA8fMjD1kHfWsoJ",
 					"value": "164325761",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pLbeSo3Nm4nJvQuXmw1WaWCVdRvNXcMtGe",
 					"value": "134181555",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "p7ULKQipciaewhednex6TGecjSbURJenrQ",
 					"value": "120347590",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pKsdAsE94xKZBrtc9AsgfjTrVBeFcTvc6i",
 					"value": "111919429",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "script:aiSqIantS4QHmAtpvfPeIl/+30Ha6DyYsxEX8mWfvHwqRSf0qFM=",
 					"value": "0",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "script:ajAJ+RECAAABIPEjsoZdbZqLC79FN1pystf491ukDmwqPR5R3CObd0pO+w4LAAAAAAA=",
 					"value": "0",
-					"unconfirmed": false,
 					"spentcount": 0
 				}
 			]
@@ -1374,7 +1218,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "546459288529",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1382,13 +1225,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1q0jsvzhvhmgu0wpzwmh7csman9gdn7e0fz6qyex",
 					"value": "9588374666",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1412,19 +1253,16 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "455662474290",
-					"unconfirmed": false,
 					"spentcount": 10
 				},
 				{
 					"address": "pkt1qv7l755avsvddcs93xcmqaf6dsfc6hvzjdul3vz",
 					"value": "45566364210",
-					"unconfirmed": false,
 					"spentcount": 1
 				},
 				{
 					"address": "pkt1qwhh24kaaxgmfzhx42shqvfcyh7y6u6fdlh99td",
 					"value": "45562958240",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			],
@@ -1432,13 +1270,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qrdwmcsayzx7rzrvdcjm75cryqlsedmhuk0y65c",
 					"value": "9920883037",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1462,7 +1298,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "547219209567",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1470,13 +1305,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qhpjqny7mc2h9cuw3twf3gaftpjxfyqtq8f3fl8",
 					"value": "10348295704",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1500,7 +1333,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "546978052854",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1508,13 +1340,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qka8ksyrh5r5lglvwcmrcecuyy4ax6e4ue2qvvp",
 					"value": "10107138991",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1538,13 +1368,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "500607680591",
-					"unconfirmed": false,
 					"spentcount": 11
 				},
 				{
 					"address": "pkt1qd6ltr2hcj75pr40jwlnwhngjnjm3qvkpvkwqtd",
 					"value": "45504256447",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			],
@@ -1552,13 +1380,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qdx3u9jdj7sttx8q3xy3z899ypdyclkaed86d22",
 					"value": "9241023255",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1582,7 +1408,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "546270361131",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1590,13 +1415,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qarcsnuv84xahvflnkvfne5l09yuvdqs37djcee",
 					"value": "9399447268",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1620,7 +1443,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "546648222158",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1628,13 +1450,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1q9m00wxvvy898c4j86ns09q8um8pymnjf7e2y6d",
 					"value": "9777308295",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1658,7 +1478,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "545740017794",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1666,13 +1485,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1q0ufwgsya0fwy7gfrz8gpd6am73jlkmfd0xx2z9",
 					"value": "8869103931",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1696,13 +1513,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "500326846284",
-					"unconfirmed": false,
 					"spentcount": 11
 				},
 				{
 					"address": "pkt1qwc9g2f996w4lmdcaxeuapar2f4m32ty0enpyy7",
 					"value": "45484013702",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			],
@@ -1710,13 +1525,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qk54yu5hnwfpuyqlf59jd9a8kwcd2gcdlfrkjts",
 					"value": "8939946203",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1740,7 +1553,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "547111164104",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1748,13 +1560,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qzrkl8u9h50thcnae85jkmzezm6aemvz6mesu8c",
 					"value": "10240250241",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1778,7 +1588,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "545686874289",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1786,13 +1595,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qpud4ya07j8ex7zq04ke35pp08z8n4dep3rctkf",
 					"value": "8815960426",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1816,7 +1623,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "546885935893",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1824,13 +1630,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qkdtmdk24y54vuj9c9l5p4rfye3p22grqrf8xv4",
 					"value": "10015022030",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1854,7 +1658,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "545895850540",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1862,13 +1665,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1q6n8nrj0pxhn30vaf8syjwwh38sjypss5sjj57c",
 					"value": "9024936677",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1892,7 +1693,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "547423671331",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1900,13 +1700,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qq4g9cuey5k90l23ja43gte4l39lywpz8064rlw",
 					"value": "10552757468",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1930,7 +1728,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "547321081637",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1938,13 +1735,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qjg05xsxv7m997sma6lkhwlv2md0q7d72pw0460",
 					"value": "10450167774",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -1968,7 +1763,6 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pQN3tLD1NtKUXjydryQPkUyxwEeSATj9TK",
 					"value": "545964715252",
-					"unconfirmed": false,
 					"spentcount": 12
 				}
 			],
@@ -1976,13 +1770,11 @@ const Apiv1_blockCoins_sample /*:Apiv1_blockCoins*/ = {
 				{
 					"address": "pApenbwQ9WGsjw3Y714CgPz5VgofWtDc9f",
 					"value": "536870912000",
-					"unconfirmed": false,
 					"spentcount": 0
 				},
 				{
 					"address": "pkt1qc8f4yh0p27su9t2ldn59dhc6dtfzczwxm3dy0k",
 					"value": "9093801389",
-					"unconfirmed": false,
 					"spentcount": 1
 				}
 			]
@@ -2023,25 +1815,25 @@ module.exports.Apiv1_chainUp_sample = Apiv1_chainUp_sample;
 const Apiv1_chainDown_sample /*:Apiv1_chainDown*/ = {
 	"results": [
 		{
-			"hash": "674391d6defad49a16de364f793efdbdd560ebdd63b053553d83f6e693d7ed70",
-			"height": 369331,
+			"hash": "1659dc7b29a248e3139c9907aef4ad9706ac3f5f95143c0162858ac77321e6e3",
+			"height": 369372,
 			"version": 536870912,
-			"size": 18041,
-			"merkleRoot": "34c6cfd7b9590ac2399ac4467bed3eb97bfaa6772aad14a70d060c5cd4fed02f",
-			"time": "2020-04-24T13:10:55.000Z",
-			"nonce": 1296375989,
+			"size": 32069,
+			"merkleRoot": "538d0c9a5defed0b8d63859a18fe8091a12d05f3634a5fc0199c8f964748bc62",
+			"time": "2020-04-24T13:43:57.000Z",
+			"nonce": 36609226,
 			"bits": 489213895,
 			"difficulty": 25693.04371332,
-			"previousBlockHash": "8af58de880f8cadd234d4fcfc2fb1a75c64fe5462ebeb322d1c4d4825fa8f825",
-			"transactionCount": 2,
-			"pcAnnCount": "914645",
-			"pcAnnDifficulty": 127.99998474,
-			"pcBlkDifficulty": 2667797.74132217,
+			"previousBlockHash": "49504a1e402d2649f12b0762d7cc35e41b6903946d453d8b4f6f7d01d8486128",
+			"transactionCount": 3,
+			"pcAnnCount": "1296422",
+			"pcAnnDifficulty": 15.99999809,
+			"pcBlkDifficulty": 10923240.04752727,
 			"pcVersion": 2,
-			"dateMs": "1587733863540",
+			"dateMs": "1587735957002",
 			"networkSteward": "pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2",
-			"blocksUntilRetarget": 1613,
-			"retargetEstimate": 0.9655250961056516
+			"blocksUntilRetarget": 1572,
+			"retargetEstimate": 0.9699692359469271
 		}
 	],
 	"prev": "",
@@ -2421,8 +2213,8 @@ const Apiv1_packetcryptStats_sample /*:Apiv1_packetcryptStats*/ = {
 		{
 			"date": "2020-04-24T00:00:00.000Z",
 			"pcVersion": 2,
-			"bitsPerSecond": 39179976,
-			"encryptionsPerSecond": 5082357
+			"bitsPerSecond": 39037016,
+			"encryptionsPerSecond": 5077576
 		}
 	],
 	"prev": "",

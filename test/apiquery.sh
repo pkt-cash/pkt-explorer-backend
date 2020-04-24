@@ -1,6 +1,7 @@
 #!/bin/bash
 export OUT_FILE=./test/apitest_gen0.js
-export SERVER=https://pkt.cash
+export SERVER=http://h.snode.cjd.li:3005
+echo '' > $OUT_FILE
 echo 'api/v1/status/enabled-chains Apiv1_enabledChains
 api/v1/PKT/pkt/stats/richlist/3/1 Apiv1_richlist_result
 api/v1/PKT/pkt/ns Apiv1_ns
