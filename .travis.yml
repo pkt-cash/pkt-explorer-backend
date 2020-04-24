@@ -6,3 +6,4 @@ before_script:
 script:
   - npm run-script lint
   - npm run-script flow
+  - bash ./test/runtests.sh
