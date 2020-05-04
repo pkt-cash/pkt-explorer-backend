@@ -439,7 +439,7 @@ const dbCreateChain = (ctx, done) => {
       height: t.fields().height,
       dateMs: t.fields().dateMs
     };
-  })
+  });
   
   const chain_mv = ClickHouse2.materializedView({
     to: chain,
@@ -1008,7 +1008,7 @@ const getCoinbase = (ctx, txBlock, txout, value) => {
 const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs) /*:Tables.TxMinted_t*/ => {
   const { tx, block } = txBlock;
   const value = BigInt(txout.svalue);
-  const vote = typeof(txout.vote) !== 'undefined' ? txout.vote : {}
+  const vote = typeof(txout.vote) !== 'undefined' ? txout.vote : {};
   const out = {
     address: txout.address,
     mintTxid: tx.txid,
@@ -1431,7 +1431,7 @@ const repairBlocks = (ctx, done) => {
   }).nThen((w) => {
     let nt = nThen;
     const _w = w;
-    for (const n of missingBlockNumbers) {
+    missingBlockNumbers.forEach((n) => {
       nt = nt((w) => {
         rpcGetBlockByHeight(ctx, n, w((err, ret) => {
           if (ret) {
@@ -1444,12 +1444,12 @@ const repairBlocks = (ctx, done) => {
             done(err);
           }
         }));
-      }).nThen
-    }
-    nt(w())
+      }).nThen;
+    });
+    nt(w());
   }).nThen((w) => {
     done();
-  })
+  });
 };
 
 const syncChain = (ctx, force, done) => {

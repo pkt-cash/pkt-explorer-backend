@@ -855,7 +855,22 @@ const DATE_REGEX = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 const isDate = (d) => {
   if (!DATE_REGEX.test(d)) { return false; }
   return !isNaN(new Date(d));
-}
+};
+
+const getCoinInfo = (sess) => {
+  let r = Rewards.pkt;
+  if (sess.config.blockRewards) {
+    r = Rewards[sess.config.blockRewards];
+    if (typeof(r) !== 'function') {
+      return void complete(sess, {
+        code: 500,
+        error: "blockReward model [" + sess.config.blockRewards + "] does not exist",
+        fn: "onReq"
+      });
+    }
+  }
+  return r;
+};
 
 const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
   const r = getCoinInfo(sess);
@@ -867,7 +882,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
   } else if (mining === 'included') {
     mc = '';
   } else {
-    mining = 'only'
+    mining = 'only';
   }
 
   let lim;
@@ -942,7 +957,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
           date: el.date,
           received: el.received,
           receivedCoins: Number(el.received) / r.unitsPerCoin
-        })
+        });
       }
       complete(sess, null, stringifier.getHeaderString()+stringifier.stringifyRecords(outCsv));
     } else {
@@ -951,7 +966,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
       if (lim) {
         const next = lim.getNext(true);
         res.prev = lim.prev + ((lim.prev && mining !== 'only') ? `?mining=${mining}` : '');
-        res.next = next + ((next && mining !== 'only') ? `?mining=${mining}` : '')
+        res.next = next + ((next && mining !== 'only') ? `?mining=${mining}` : '');
       }
       complete(sess, null, res);
     }
@@ -980,21 +995,6 @@ const nsCandidates = (sess, limit, pgnum) => {
     });
   });
 };
-
-const getCoinInfo = (sess) => {
-  let r = Rewards.pkt;
-  if (sess.config.blockRewards) {
-    r = Rewards[sess.config.blockRewards];
-    if (typeof(r) !== 'function') {
-      return void complete(sess, {
-        code: 500,
-        error: "blockReward model [" + sess.config.blockRewards + "] does not exist",
-        fn: "onReq"
-      });
-    }
-  }
-  return r;
-}
 
 const ns = (sess) => {
   const r = getCoinInfo(sess);
@@ -1340,7 +1340,7 @@ const onReq = (ctx, req, res) => {
       case 'ns': switch(parts[1]) {
         case 'candidates': return void nsCandidates(sess, parts[2], parts[3]);
         case undefined: return void ns(sess);
-      }
+      } break;
 
       // /api/PKT/pkt/address/
       case 'address': switch (parts[1]) {
