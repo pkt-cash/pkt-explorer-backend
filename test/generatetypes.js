@@ -19,7 +19,7 @@ const enumt = (type, possibilities) => {
     return out;
 };
 
-const maybe = (t /*:T*/) => t
+const maybe = (t /*:T*/) => t;
 
 const types /*:{[string]:T}*/ = {};
 const namedType = (name) => ({p:name,f:name,_shape:undefined});
@@ -42,7 +42,7 @@ const extend = (tname, o/*:T*/) => {
         throw new Error(`can't extend ${String(o)}, not an object`);
     }
     return obj(Object.assign(JSON.parse(JSON.stringify(types[tname]._shape)), o._shape));
-}
+};
 const define = (name, t/*:T*/) => {
     types[name] = t;
     return name;
@@ -130,7 +130,7 @@ define('Coins_t', obj({
     currentState: enumt(string, ['"mempool"', '"block"', '"spending"', '"spent"', '"burned"']),
 }));
 
-const or = (a, b) => ({f: `${a} | ${b}`,p:`PropTypes.oneOfType([${a}, ${b}])`,_shape:undefined})
+const or = (a, b) => ({f: `${a} | ${b}`,p:`PropTypes.oneOfType([${a}, ${b}])`,_shape:undefined});
 define('RpcError_t', obj({
     code: uint32(),
     error: string(),
