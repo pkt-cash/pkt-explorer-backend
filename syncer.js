@@ -400,6 +400,10 @@ const Table_TxSpent = DATABASE.addTemp('TxSpent', ClickHouse2.table/*::<Tables.T
   stateTr:        types.Int8,
   dateMs:         types.UInt64,
 
+  // This is seen information, but we actually know it and it smooths over bugs
+  // if it happens that we didn't get the mint data before the spend event.
+  value:          types.Int64_string,
+
   // Spent information (filled when the relevant spend hits a block)
   spentTxid:      types.FixedString(64),
   spentTxinNum:   types.Int32,
@@ -966,6 +970,7 @@ const convertTxin = (
     mintTxid: normaltxin.txid,
     mintIndex: normaltxin.vout,
     address,
+    value: normaltxin.prevOut.svalue,
 
     stateTr: (block) ? COIN_STATE.spent : COIN_STATE.spending,
 
@@ -1084,6 +1089,7 @@ const dbInsertTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done) => {
     Array.prototype.push.apply(txOutputs, tx.vout);
     Array.prototype.push.apply(txInputs, tx.vin);
   });
+  const keyFields = [ coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex ];
   nThen((w) => {
     if (!transactions.length) { return; }
     ctx.ch.insert(tbl_tx, transactions, w((err) => {
@@ -1091,15 +1097,11 @@ const dbInsertTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done) => {
     }));
   }).nThen((w) => {
     if (!txOutputs.length) { return; }
-    const keyFields = [
-      coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex ];
     ctx.ch.mergeUpdate(Table_TxMinted, txOutputs, coins, keyFields, stateMapper, w((err) => {
       if (err) { throw err; }
     }));
   }).nThen((w) => {
     if (!txInputs.length) { return; }
-    // We can't key off of the address because we don't know it, so we must do a table scan.
-    const keyFields = [ coins.fields().mintTxid, coins.fields().mintIndex ];
     ctx.ch.mergeUpdate(Table_TxSpent, txInputs, coins, keyFields, stateMapper, w((err) => {
       if (err) { throw err; }
     }));
@@ -1150,13 +1152,15 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
     ch.query(`SELECT
         address,
         mintTxid,
-        mintIndex
+        mintIndex,
+        value,
       FROM (
         SELECT
             address,
             mintTxid,
             mintIndex,
-            spentBlockHash
+            spentBlockHash,
+            value
         FROM ${coins.name()}
         WHERE (mintTxid,mintIndex) IN (
           SELECT
@@ -1182,6 +1186,8 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
 
           stateTr: COIN_STATE.block,
           dateMs: now,
+
+          value: x.value,
 
           spentTxid: "",
           spentTxinNum: 0,
