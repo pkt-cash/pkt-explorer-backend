@@ -1541,7 +1541,7 @@ const syncChain = (ctx, force, done) => {
     again();
   }).nThen((w) => {
     ctx.rpclog.debug(`Syncing blocks from [${ctx.mut.headHash}] [${ctx.mut.headHeight}]`);
-    const again = (transactions) => {
+    const again = (txInOut) => {
       rpcGetBlockByHash(ctx, ctx.mut.headHash, w((err, ret) => {
         if (!ret) { return void error(err, w); }
         blocks.push(ret);
@@ -1557,16 +1557,17 @@ const syncChain = (ctx, force, done) => {
         } else {
           ctx.mut.headHeight = ret.height + 1;
           ctx.mut.headHash = ret.nextblockhash;
-          transactions += ret.rawtx.length;
-          if (blocks.length >= 1000 || transactions >= 25000) {
-            ctx.rpclog.debug(`Got [${blocks.length}] blocks ([${transactions}] transactions)`);
+          for (const tx of ret.rawtx) {
+            txInOut += tx.vin.length + tx.vout.length;
+          }
+          if (blocks.length >= 1000 || txInOut >= 50000) {
+            ctx.rpclog.debug(`Got [${blocks.length}] blocks ([${txInOut}] inputs/outputs)`);
             dbInsertBlocks(ctx, blocks, w(() => {
-              transactions = 0;
               blocks = [];
               again(0);
             }));
           } else {
-            again(transactions);
+            again(txInOut);
           }
         }
       }));
