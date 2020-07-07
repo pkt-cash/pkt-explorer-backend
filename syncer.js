@@ -1551,7 +1551,6 @@ const syncChain = (ctx, force, done) => {
       }
     }));
   }).nThen((w) => {
-    ctx.rpclog.debug(`Syncing blocks from [${ctx.mut.headHash}] [${ctx.mut.headHeight}]`);
     const again = (txInOut, getHash) => {
       rpcGetBlockByHash(ctx, getHash, w((err, ret) => {
         if (!ret) { return void error(err, w); }
@@ -1561,6 +1560,7 @@ const syncChain = (ctx, force, done) => {
             // First cycle is also the last, yay
             return;
           }
+          ctx.rpclog.debug(`Syncing from [${ctx.mut.headHash}] [${ctx.mut.headHeight}]`);
           return void again(0, ret.nextblockhash);
         }
         blocks.push(ret);
