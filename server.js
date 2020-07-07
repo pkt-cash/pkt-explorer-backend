@@ -449,6 +449,28 @@ const packetcryptBlock = (sess, hash) => {
 
 };
 
+const minerList = (sess, limit, pgnum) => {
+  const lim = limitFromPage(sess, limit, pgnum, `/stats/minerlist`, 500);
+  if (!lim) { return; }
+  sess.ch.query(`SELECT
+      address,
+      received
+    FROM addrincome
+    WHERE date = yesterday() AND coinbase > 0
+    ORDER BY received DESC
+    LIMIT ${lim.limit}
+  `, (err, ret) => {
+    if (err || !ret || !ret.length) {
+      return void complete(sess, dbError(err, "minerlist"));
+    }
+    return void complete(sess, null, {
+      results: ret,
+      prev: lim.prev,
+      next: lim.getNext(ret.length)
+    });
+  });
+};
+
 const richList = (sess, limit, pgnum) => {
   const lim = limitFromPage(sess, limit, pgnum, `/stats/richlist`, 500);
   if (!lim) { return; }
@@ -1334,6 +1356,7 @@ const onReq = (ctx, req, res) => {
       case 'stats': switch (parts[1]) {
         // /api/PKT/pkt/stats/richlist
         case 'richlist': return void richList(sess, parts[2], parts[3]);
+        case 'minerlist': return void minerList(sess, parts[2], parts[3]);
         case 'daily-transactions': return void dailyTransactions1(sess, parts[2], parts[3]);
       } break;
 
