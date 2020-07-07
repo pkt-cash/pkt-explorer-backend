@@ -1458,6 +1458,39 @@ const repairBlocks = (ctx, done) => {
   });
 };
 
+const findConvergentBlock = (
+  ctx,
+  startHeight /*:number*/,
+  startHash /*:string*/,
+  done /*:(?Error, ?{ headHash: string, headHeight: number })=>void*/
+) => {
+  rpcGetBlockByHeight(ctx, startHeight, (err, ret) => {
+    if (!ret) {
+      return void done(err);
+    } else if (ret.hash === startHash) {
+      // We're in agreement with the chain
+      return void done(null, { headHash: startHash, headHeight: startHeight });
+    }
+    ctx.rpclog.info(`FORK [${startHash}] != [${ret.hash}] searching for common block`);
+    ctx.ch.query(`SELECT
+        height,
+        hash
+      FROM chain
+      WHERE height = ${startHeight - 1}
+      ORDER BY dateMs DESC
+      LIMIT 1
+    `, (err, ret) => {
+      if (err) {
+        return void done(err);
+      } else if (!ret || !ret.length) {
+        // nothing found in chain, we need to sync from 0
+        return void done(null, { headHash: '', headHeight: 0 });
+      }
+      findConvergentBlock(ctx, ret[0].height, ret[0].hash, done);
+    });
+  });
+};
+
 const syncChain = (ctx, force, done) => {
   let blocks = [];
   nThen((w) => {
@@ -1505,45 +1538,31 @@ const syncChain = (ctx, force, done) => {
       }));
     }).nThen(w());
   }).nThen((w) => {
-    const again = () => {
-      rpcGetBlockByHeight(ctx, ctx.mut.headHeight, w((err, ret) => {
-        // In case of error, we should reset the block height to zero
-        if (!ret) {
-          if (ctx.mut.headHeight === 0) {
-            return void error(err, w);
-          } else {
-            ctx.rpclog.warn(
-              `Unable to get block at height [${ctx.mut.headHeight}] [${String(err)}]`);
-            return void setTimeout(again, 5000);
-          }
-        }
-        if (ret.hash === ctx.mut.headHash) {
-          //console.error("Db agrees with chain");
-          if (ret.confirmations === 1 && !('nextblockhash' in ret)) {
-            // no sync needed
-            w.abort();
-            done();
-          } else {
-            ctx.mut.headHash = ret.nextblockhash;
-            ctx.mut.headHeight = ret.height + 1;
-          }
-        } else if (ret.height === 0) {
-          // need sync from the beginning (but we're there)
-          ctx.mut.headHash = ret.hash;
-          ctx.rpclog.info("Syncing chain from the start");
-        } else {
-          ctx.mut.headHeight = ret.height - 1;
-          ctx.mut.headHash = ret.previousblockhash;
-          ctx.rpclog.debug(`Probable reorg, retrying from [${ret.height - 1}]`);
-        }
-      }));
-    };
-    again();
+    findConvergentBlock(ctx, ctx.mut.headHeight, ctx.mut.headHash, w((err, ret) => {
+      if (!ret) {
+        ctx.snclog.error(err);
+        w.abort();
+        return done();
+      }
+      if (ret.headHash !== ctx.mut.headHash || ret.headHeight !== ctx.mut.headHeight) {
+        ctx.snclog.info(`Updating block [${ret.headHash}] @ [${ret.headHeight}]`);
+        ctx.mut.headHeight = ret.headHeight;
+        ctx.mut.headHash = ret.headHash;
+      }
+    }));
   }).nThen((w) => {
     ctx.rpclog.debug(`Syncing blocks from [${ctx.mut.headHash}] [${ctx.mut.headHeight}]`);
-    const again = (txInOut) => {
-      rpcGetBlockByHash(ctx, ctx.mut.headHash, w((err, ret) => {
+    const again = (txInOut, getHash) => {
+      rpcGetBlockByHash(ctx, getHash, w((err, ret) => {
         if (!ret) { return void error(err, w); }
+        if (getHash === ctx.mut.headHash) {
+          // First cycle, we need to get the next hash
+          if (ret.confirmations === 1 && !('nextblockhash' in ret)) {
+            // First cycle is also the last, yay
+            return;
+          }
+          return void again(0, ret.nextblockhash);
+        }
         blocks.push(ret);
         if (ret.height % 100 === 0) {
           ctx.rpclog.debug(`Block [${ret.height}] [${ret.hash}]`);
@@ -1552,27 +1571,30 @@ const syncChain = (ctx, force, done) => {
           // We have reached the tip :)
           ctx.rpclog.debug(`Got [${blocks.length}] blocks`);
           dbInsertBlocks(ctx, blocks, w(() => {
+            ctx.mut.headHeight = ret.height;
+            ctx.mut.headHash = ret.hash;
             blocks = [];
           }));
         } else {
-          ctx.mut.headHeight = ret.height + 1;
-          ctx.mut.headHash = ret.nextblockhash;
           for (const tx of ret.rawtx) {
             txInOut += tx.vin.length + tx.vout.length;
           }
-          if (blocks.length >= 1000 || txInOut >= 50000) {
+          // Do batches of 100k txins / txouts because more than that runs us out of memory
+          if (txInOut >= 100000) {
             ctx.rpclog.debug(`Got [${blocks.length}] blocks ([${txInOut}] inputs/outputs)`);
             dbInsertBlocks(ctx, blocks, w(() => {
+              ctx.mut.headHeight = ret.height;
+              ctx.mut.headHash = ret.hash;
               blocks = [];
-              again(0);
+              again(0, ret.nextblockhash);
             }));
           } else {
-            again(txInOut);
+            again(txInOut, ret.nextblockhash);
           }
         }
       }));
     };
-    again(0);
+    again(0, ctx.mut.headHash);
   }).nThen((w) => {
     dbNsBurn(ctx, w((err, _) => {
       if (err) { return void error(err, w); }
