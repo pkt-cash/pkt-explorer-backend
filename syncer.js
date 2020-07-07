@@ -1558,6 +1558,8 @@ const syncChain = (ctx, force, done) => {
           // First cycle, we need to get the next hash
           if (ret.confirmations === 1 && !('nextblockhash' in ret)) {
             // First cycle is also the last, yay
+            w.abort();
+            done();
             return;
           }
           ctx.rpclog.debug(`Syncing from [${ctx.mut.headHash}] [${ctx.mut.headHeight}]`);
