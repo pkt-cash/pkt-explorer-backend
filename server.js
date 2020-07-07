@@ -454,9 +454,10 @@ const minerList = (sess, limit, pgnum) => {
   if (!lim) { return; }
   sess.ch.query(`SELECT
       address,
-      received
+      sum(received) as received
     FROM addrincome
     WHERE date = yesterday() AND coinbase > 0
+    GROUP BY address
     ORDER BY received DESC
     LIMIT ${lim.limit}
   `, (err, ret) => {
