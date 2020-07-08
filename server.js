@@ -449,6 +449,85 @@ const packetcryptBlock = (sess, hash) => {
 
 };
 
+const relatedAddresses = (sess, addr, limit, pgnum, addresseswho) => {
+  let addressesWhich;
+  let whenWe;
+  if (addresseswho === 'werepaidby') {
+    addressesWhich = 'received';
+    whenWe = 'spent';
+
+  } else if (addresseswho === 'paidwith') {
+    addressesWhich = 'spent';
+    whenWe = 'spent';
+
+  } else if (addresseswho === 'werepaidwith') {
+    addressesWhich = 'received';
+    whenWe = 'received';
+
+  } else {
+    // addresseswho = 'paid';
+    addressesWhich = 'spent';
+    whenWe = 'received';
+  }
+
+  const lim = limitFromPage(sess, limit, pgnum, `/stats/related-addresses`, 500);
+  if (!lim) { return; }
+
+  const ourTxidName = (whenWe === 'spent') ? 'spentTxid' : 'mintTxid';
+  sess.ch.query(`SELECT
+      address,
+      sum(minAmount) AS amount
+    FROM (
+      SELECT
+        address,
+        txid,
+        if(amount < amountb, amount, amountb) as minAmount
+      FROM (
+        SELECT
+            address,
+            txid,
+            sum(${addressesWhich}) as amount
+          FROM txview
+          WHERE type = '${(addressesWhich === 'spent') ? 'input' : 'output'}'
+          AND txid IN (
+            SELECT ${ourTxidName}
+            FROM coins
+            WHERE address = '${e(addr)}'
+              ${(whenWe === 'spent') ?
+              "AND spentTxid != toFixedString('',64)" :
+              "AND coinbase = 0"}
+            GROUP BY ${ourTxidName}
+          )
+          GROUP BY address,txid
+      )
+      INNER JOIN (
+        SELECT
+        ${ourTxidName},
+        toInt64(sum(value)) as amountb
+        FROM coins
+        WHERE address = '${e(addr)}'
+          ${(whenWe === 'spent') ?
+          "AND spentTxid != toFixedString('',64)" :
+          "AND coinbase = 0"}
+        GROUP BY ${ourTxidName}
+      ) ON txid = ${ourTxidName}
+    )
+    WHERE address != '${e(addr)}'
+    GROUP BY address
+    ORDER BY amount DESC
+    LIMIT ${lim.limit}
+  `, (err, ret) => {
+    if (err || !ret) {
+      return void complete(sess, dbError(err, "relatedAddresses"));
+    }
+    return void complete(sess, null, {
+      results: ret,
+      prev: lim.prev,
+      next: lim.getNext(ret.length)
+    });
+  });
+};
+
 const minerList = (sess, limit, pgnum) => {
   const lim = limitFromPage(sess, limit, pgnum, `/stats/minerlist`, 500);
   if (!lim) { return; }
@@ -1376,6 +1455,8 @@ const onReq = (ctx, req, res) => {
           case 'coins': return void addressCoins1(sess, addr, parts[3], parts[4], query.mining);
           case 'income': return void addressIncome1(
             sess, addr, parts[3], parts[4], query.mining, query.csv);
+          case 'related-addresses': return void relatedAddresses(
+            sess, addr, parts[3], parts[4], query.addresseswho);
         }
       } break;
 
