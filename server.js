@@ -537,7 +537,7 @@ const minerList = (sess, limit, pgnum) => {
     FROM addrincome
     WHERE date = yesterday()
     AND coinbase > 0
-    AND address NOT LIKE 'script:'
+    AND address NOT LIKE 'script:%'
     GROUP BY address
     ORDER BY received DESC
     LIMIT ${lim.limit}
