@@ -1161,7 +1161,7 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
         address,
         mintTxid,
         mintIndex,
-        value,
+        value
       FROM (
         SELECT
             address,
