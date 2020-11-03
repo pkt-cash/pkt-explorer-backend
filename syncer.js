@@ -1383,8 +1383,8 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
       for (const blk of dbBlocks) {
         if (minHeight !== blk.height) { continue; }
         if (blk.previousBlockHash === tip.hash) {
-          ctx.snclog.info(`Adding [${blocks.length}] blocks ` +
-            `      [${hashByHeight[minHeight].slice(0,16)} @ ${minHeight}] ... ` +
+          ctx.snclog.info(`Adding [${blocks.length}] blocks\t` +
+            `[${hashByHeight[minHeight].slice(0,16)} @ ${minHeight}] ... ` +
             `[${hashByHeight[maxHeight].slice(0,16)} @ ${maxHeight}]`);
           return;
         }
@@ -1436,7 +1436,8 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
     }
     ctx.ch.insert(TABLES.chain, dbChain, e(w));
   }).nThen((_) => {
-    ctx.snclog.info(`Adding [${blocks.length}] blocks - done ${Log.logTime(+new Date() - t0)}`);
+    ctx.snclog.info(`Adding [${blocks.length}] blocks\t - done ` +
+      `\t\t\t\t\t\t\t\t\t\t${Log.logTime(+new Date() - t0)}`);
     done(null);
   });
 };
@@ -1532,7 +1533,7 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
 };
 
 const getBlocks = (ctx, startHash /*:string*/, done) => {
-  ctx.rpclog.info(`getBlocks [${startHash.slice(0,16)}]...`);
+  ctx.rpclog.info(`Getting blocks     \t[${startHash.slice(0,16)}]...`);
   const t0 = +new Date();
   const speculate = (bl) => {
     if (ctx.mut.gettingBlocks) { return; }
@@ -1540,7 +1541,7 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
     if (blocks.length > 0 && 'nextblockhash' in blocks[blocks.length-1]) {
       ctx.mut.gettingBlocks = true;
       const nextHash = blocks[blocks.length-1].nextblockhash;
-      ctx.rpclog.info(`Speculative getBlocks [${nextHash.slice(0,16)}]...`);
+      ctx.rpclog.debug(`Speculative getBlocks [${nextHash.slice(0,16)}]...`);
       getBlocks0(ctx, nextHash, (bl) => {
         ctx.mut.blockList = bl;
         ctx.mut.gettingBlocks = false;
@@ -1548,7 +1549,7 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
     }
   };
   const directGetBlocks = () => {
-    ctx.rpclog.info(`Direct getBlocks [${startHash.slice(0,16)}]...`);
+    ctx.rpclog.debug(`Direct getBlocks [${startHash.slice(0,16)}]...`);
     getBlocks0(ctx, startHash, (bl) => {
       speculate(bl);
       done(null, bl, +new Date() - t0);
@@ -1699,9 +1700,9 @@ const syncChain = (ctx, done) => {
         const blocks = blockList.blocks();
         const txio = blockList.txio();
         const topBlock = blocks[blocks.length - 1];
-        ctx.rpclog.info(`Got [${blocks.length}] blocks, ` +
-          `height: [${blocks[0].hash.slice(0,16)} @ ${blocks[0].height}] ... ` +
-          `[${topBlock.hash.slice(0,16)} @ ${topBlock.height}] ([${txio}] inputs/outputs) ` +
+        ctx.rpclog.info(`Got    [${blocks.length}] blocks\t` +
+          `[${blocks[0].hash.slice(0,16)} @ ${blocks[0].height}] ... ` +
+          `[${topBlock.hash.slice(0,16)} @ ${topBlock.height}] ([${txio}] inputs/outputs)\t` +
           `${Log.logTime(timeMs)}`);
         dbInsertBlocks(ctx, blocks, w(ctx.lw((err) => {
           if (err) {
