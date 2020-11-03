@@ -4,7 +4,6 @@
 'use strict';
 const Util = require('util');
 
-const Saferphore = require('saferphore');
 const nThen = require('nthen');
 const RpcClient = require('bitcoind-rpc');
 
@@ -852,43 +851,11 @@ const retrier = (doThis) => {
   });
 };
 
-const rpcGetTransaction = (ctx, hash /*:string*/, done) => {
-  retrier((ut) => {
-    ctx.btc.getRawTransaction(hash, 1, ut(rpcRes((err, ret) => {
-      if (!ret) { return void done(err); }
-      done(null, ret);
-    })));
-  });
-};
-
 const rpcGetBlockByHash = (ctx, hash /*:string*/, inclTxns, done) => {
-  const sema = Saferphore.create(4);
   retrier((ut) => {
-    ctx.btc.getBlock(hash, true, false, ut(rpcRes((err, block) => {
-      if (!block) { return void done(err || new Error()); }
-      if (!inclTxns) {
-        return void done(null, (block /*:RpcBlock_t*/));
-      }
-      nThen((w) => {
-        block.rawtx = Array(block.tx.length).fill();
-        block.tx.forEach((txid, i) => {
-          sema.take(w((ra) => {
-            rpcGetTransaction(ctx, txid, w(ra((err, tx) => {
-              if (!tx) {
-                w.abort();
-                return void done(err || new Error());
-              }
-              block.rawtx[i] = tx;
-            })));
-          }));
-        });
-      }).nThen((_) => {
-        for (let i = 0; i < block.tx.length; i++) {
-          if (typeof(block.rawtx[i]) !== 'object') { throw new Error(); }
-        }
-        delete block.tx;
-        return void done(null, (block /*:RpcBlock_t*/));
-      });
+    ctx.btc.getBlock(hash, true, inclTxns, ut(rpcRes((err, ret) => {
+      if (!ret) { return void done(err); }
+      done(null, (ret /*:RpcBlock_t*/));
     })));
   });
 };
@@ -913,6 +880,15 @@ const rpcGetMempool = (ctx, done) => {
     }, ut(rpcRes((err, ret) => {
       if (!ret) { return void done(err); }
       done(null, (ret /*:Array<string>*/));
+    })));
+  });
+};
+
+const rpcGetTransaction = (ctx, hash /*:string*/, done) => {
+  retrier((ut) => {
+    ctx.btc.getRawTransaction(hash, 1, ut(rpcRes((err, ret) => {
+      if (!ret) { return void done(err); }
+      done(null, ret);
     })));
   });
 };
