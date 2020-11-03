@@ -1172,13 +1172,14 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
         FROM ${coins.name()}
         WHERE (mintTxid,mintIndex) IN (
           SELECT
+              address,
               mintTxid,
               mintIndex
             FROM ${coins.name()}
             WHERE spentBlockHash IN ${subSelect}
         )
-        ORDER BY mintTxid, mintIndex, dateMs DESC
-        LIMIT 1 BY mintTxid, mintIndex
+        ORDER BY address, mintTxid, mintIndex, dateMs DESC
+        LIMIT 1 BY address, mintTxid, mintIndex
       )
       WHERE spentBlockHash IN ${subSelect}
     `, w((err, ret) => {
@@ -1220,19 +1221,21 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
         mintIndex
       FROM (
         SELECT
+            address,
             mintTxid,
             mintIndex,
             spentBlockHash
         FROM ${coins.name()}
-        WHERE (mintTxid,mintIndex) IN (
+        WHERE (address,mintTxid,mintIndex) IN (
           SELECT
+              address,
               mintTxid,
               mintIndex
             FROM ${coins.name()}
             WHERE mintBlockHash IN ${subSelect}
         )
-        ORDER BY mintTxid, mintIndex, dateMs DESC
-        LIMIT 1 BY mintTxid, mintIndex
+        ORDER BY address, mintTxid, mintIndex, dateMs DESC
+        LIMIT 1 BY address, mintTxid, mintIndex
       )
       WHERE mintBlockHash IN ${subSelect}
     `, w((err, ret) => {
