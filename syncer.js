@@ -1544,16 +1544,20 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
         done(null, bl);
         return true;
       }
+      ctx.rpclog.info(`Speculative getBlocks miss...`);
       return false;
     }
   };
   if (checkFinished()) { return; }
+  ctx.rpclog.info(`Direct getBlocks [${startHash.slice(0,16)}]...`);
   getBlocks0(ctx, startHash, (bl) => {
     const blocks = bl.blocks();
     if (blocks.length > 0 && 'nextblockhash' in blocks[blocks.length-1]) {
       if (ctx.mut.gettingBlocks) { throw new Error(); }
       ctx.mut.gettingBlocks = true;
-      getBlocks0(ctx, blocks[blocks.length-1].nextblockhash, (bl) => {
+      const nextHash = blocks[blocks.length-1].nextblockhash;
+      ctx.rpclog.info(`Speculative getBlocks [${nextHash.slice(0,16)}]...`);
+      getBlocks0(ctx, nextHash, (bl) => {
         ctx.mut.blockList = bl;
         ctx.mut.gettingBlocks = false;
       });
@@ -1666,7 +1670,6 @@ const syncChain = (ctx, done) => {
       return void done();
     }
     const again = (startHash) => {
-      ctx.rpclog.info(`Getting blocks [${startHash.slice(0,16)}]...`);
       getBlocks(ctx, startHash, w((err, blockList) => {
         if (!blockList) {
           return void error(err, w, done);
@@ -1746,7 +1749,7 @@ const main = (config, argv) => {
       tip: phonyBlock(),
       mempool: [],
       gettingBlocks: false,
-      blockList: mkBlockList(),
+      blockList: undefined,
     }
   }) /*:Context_t*/);
   nThen((w) => {
