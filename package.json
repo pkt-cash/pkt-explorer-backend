@@ -15,7 +15,8 @@
     "bitcoind-rpc": "^0.8.1",
     "bs58check": "^2.1.2",
     "csv-writer": "^1.6.0",
-    "nthen": "^0.2.1"
+    "nthen": "^0.2.1",
+    "saferphore": "0.0.2"
   },
   "devDependencies": {
     "check-prop-types": "^1.1.2",
