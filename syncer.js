@@ -12,10 +12,6 @@ const Log = require('./lib/log.js');
 
 const Config = require('./config.js');
 
-
-// Try a repair of the db every 5 minutes
-const MS_BETWEEN_REPAIRS = 1000 * 60 * 5;
-
 /*::
 import type { Nthen_WaitFor_t } from 'nthen';
 import type {
@@ -221,6 +217,18 @@ const tbl_tx = DATABASE.add('tbl_tx', ClickHouse2.table/*::<Tables.tbl_tx_t>*/({
   dateMs: types.UInt64
 }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
 ).withOrder((fields) => [ fields.txid ]));
+
+const tbl_chain = DATABASE.add('chain', ClickHouse2.table/*::<Tables.chain_t>*/({
+  hash: types.FixedString(64),
+  height: types.Int32,
+  dateMs: types.UInt64,
+  state: types.Enum({
+    uncommitted: 1,
+    complete: 2,
+    reverted: 3,
+  }),
+}).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
+).withOrder((fields) => [ fields.height ]));
 
 // Each state is represented by a 3 bit number, the 'state' field contains both current
 // and previous state, the previous state is at bit index zero and the current state is
@@ -429,10 +437,9 @@ const makeE = (done /*:(?Error)=>void*/) => (w /*:Nthen_WaitFor_t*/) => w((err) 
   }
 });
 
-
-
-const error = (err, w) => {
-  throw new Error(err);
+const error = (err /*:?Error*/, w /*:Nthen_WaitFor_t*/, done /*:(?Error)=>void*/) => {
+  w.abort();
+  done(err);
 };
 
 const eexistTable = (err) => {
@@ -440,67 +447,6 @@ const eexistTable = (err) => {
   if (err.message.indexOf("doesn't exist") > -1) { return true; }
   if (err.message.indexOf("Table is dropped") > -1) { return true; }
   return false;
-};
-
-const dbCreateChain = (ctx, done) => {
-  const chain = ClickHouse2.table({
-    hash: types.FixedString(64),
-    height: types.Int32,
-    dateMs: types.UInt64
-  }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
-  ).withOrder((fields) => [ fields.height ]);
-  chain._.name = 'chain';
-
-  const chainSel = ClickHouse2.select(tbl_blk).fields((t) => {
-    return {
-      hash: t.fields().hash,
-      height: t.fields().height,
-      dateMs: t.fields().dateMs
-    };
-  });
-
-  const chain_mv = ClickHouse2.materializedView({
-    to: chain,
-    as: chainSel
-  });
-  chain_mv._.name = 'chain_mv';
-
-  const e = (w) => {
-    return w((err, _) => {
-      if (!err) { return; }
-      w.abort();
-      done(err);
-    });
-  };
-  nThen((w) => {
-    if (!ctx.recompute) { return; }
-    ctx.snclog.info('--recompute recomputing chain table');
-    nThen((w) => {
-      ctx.ch.modify(`DROP TABLE IF EXISTS chain`, e(w));
-    }).nThen((w) => {
-      ctx.ch.modify(`DROP TABLE IF EXISTS chain_mv`, e(w));
-    }).nThen(w());
-  }).nThen((w) => {
-    ctx.ch.query(`SELECT * FROM chain LIMIT 1`, w((err, _) => {
-      if (eexistTable(err)) {
-        return;
-      }
-      // err or already exists
-      w.abort();
-      return void done(err);
-    }));
-  }).nThen((w) => {
-    ctx.ch.modify(chain.queryString(), e(w));
-  }).nThen((w) => {
-    ctx.ch.modify(`INSERT INTO chain ${chainSel.queryString()}`, e(w));
-  }).nThen((w) => {
-    ctx.ch.modify(chain_mv.queryString(), e(w));
-  }).nThen((w) => {
-    if (ctx.recompute) {
-      ctx.snclog.info('--recompute recomputing chain table COMPLETE');
-    }
-    done();
-  });
 };
 
 const dbCreateVotes = (ctx, done) => {
@@ -718,7 +664,7 @@ const dbCreateTxview = (ctx, done) => {
       ) ENGINE AggregatingMergeTree()
       ORDER BY (txid, type, address, coinbase)
       `, w((err, _) => {
-        if (err) { return void error(err, w); }
+        if (err) { return void error(err, w, done); }
     }));
   }).nThen((w) => {
     ctx.ch.modify(`INSERT INTO txview
@@ -794,47 +740,32 @@ const dbOptimize = (ctx, done) => {
 
 const createTables = (ctx, done) => {
   const defaultDb = ctx.ch.withDb('default');
+  const e = makeE(done);
   nThen((w) => {
     defaultDb.query('SELECT 1', w((err, ret) => {
-      if (err || !ret) { return void error(err, w); }
+      if (err || !ret) { return void error(err, w, done); }
       if (JSON.stringify(ret) !== '[{"1":1}]') {
-        return void error(new Error("Unexpected result: " + JSON.stringify(ret)), w);
+        return void error(new Error("Unexpected result: " + JSON.stringify(ret)), w, done);
       }
     }));
   }).nThen((w) => {
     defaultDb.modify(`CREATE DATABASE IF NOT EXISTS ${ctx.ch.opts.db}`, w((err, ret) => {
-      if (!ret || ret.length) { return void error(err, w); }
+      if (!ret || ret.length) { return void error(err, w, done); }
     }));
   }).nThen((w) => {
-    DATABASE.create(ctx.ch, [ ClickHouse2.IF_NOT_EXISTS ], w((err) => {
-      if (err) { return void error(err, w); }
-    }));
+    DATABASE.create(ctx.ch, [ ClickHouse2.IF_NOT_EXISTS ], e(w));
   }).nThen((w) => {
     if (!ctx.recompute) { return; }
     ctx.snclog.info('--recompute OPTIMIZE all tables');
-    dbOptimize(ctx, w((err, _) => {
-      if (err) { return void error(err, w); }
-    }));
+    dbOptimize(ctx, e(w));
   }).nThen((w) => {
-    dbCreateChain(ctx, w((err) => {
-      if (err) { return void error(err, w); }
-    }));
+    dbCreateBalances(ctx, e(w));
   }).nThen((w) => {
-    dbCreateBalances(ctx, w((err) => {
-      if (err) { return void error(err, w); }
-    }));
+    dbCreateTxview(ctx, e(w));
   }).nThen((w) => {
-    dbCreateTxview(ctx, w((err) => {
-      if (err) { return void error(err, w); }
-    }));
+    dbCreateAddrIncome(ctx, e(w));
   }).nThen((w) => {
-    dbCreateAddrIncome(ctx, w((err) => {
-      if (err) { return void error(err, w); }
-    }));
-  }).nThen((w) => {
-    dbCreateVotes(ctx, w((err) => {
-      if (err) { return void error(err, w); }
-    }));
+    dbCreateVotes(ctx, e(w));
   }).nThen((_) => {
     done();
   });
@@ -888,11 +819,8 @@ const rpcGetBlockByHash = (ctx, hash /*:string*/, done) => {
   });
 };
 
-const rpcGetBlockByHeight = (ctx, height /*:number*/, done) => {
-  ctx.btc.getBlockHash(height, rpcRes((err, ret) => {
-    if (!ret) { return void done(err); }
-    rpcGetBlockByHash(ctx, ret, done);
-  }));
+const rpcGetHashByHeight = (ctx, height /*:number*/, done) => {
+  ctx.btc.getBlockHash(height, rpcRes(done));
 };
 
 // getrawmempool
@@ -1067,7 +995,7 @@ const stateMapper = /*::<X>*/(field, sn, tempTable /*:Table_t<X>*/) => {
   }
 };
 
-const dbInsertTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done) => {
+const dbInsertTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done /*:(?Error)=>void*/) => {
   const txInputs /*:Array<Tables.TxSpent_t>*/ = [];
   const txOutputs /*:Array<Tables.TxMinted_t>*/ = [];
   const transactions /*:Array<Tables.tbl_tx_t>*/ = [];
@@ -1078,22 +1006,17 @@ const dbInsertTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done) => {
     Array.prototype.push.apply(txOutputs, tx.vout);
     Array.prototype.push.apply(txInputs, tx.vin);
   });
+  const e = makeE(done);
   const keyFields = [ coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex ];
   nThen((w) => {
     if (!transactions.length) { return; }
-    ctx.ch.insert(tbl_tx, transactions, w((err) => {
-      if (err) { throw err; }
-    }));
+    ctx.ch.insert(tbl_tx, transactions, e(w));
   }).nThen((w) => {
     if (!txOutputs.length) { return; }
-    ctx.ch.mergeUpdate(Table_TxMinted, txOutputs, coins, keyFields, stateMapper, w((err) => {
-      if (err) { throw err; }
-    }));
+    ctx.ch.mergeUpdate(Table_TxMinted, txOutputs, coins, keyFields, stateMapper, e(w));
   }).nThen((w) => {
     if (!txInputs.length) { return; }
-    ctx.ch.mergeUpdate(Table_TxSpent, txInputs, coins, keyFields, stateMapper, w((err) => {
-      if (err) { throw err; }
-    }));
+    ctx.ch.mergeUpdate(Table_TxSpent, txInputs, coins, keyFields, stateMapper, e(w));
   }).nThen((_) => {
     done();
   });
@@ -1123,16 +1046,78 @@ const rpcBlockToDbBlock = (block /*:RpcBlock_t*/, now) /*:Tables.tbl_blk_t*/ => 
   };
 };
 
-// First we revert spends, then we revert mints
-// If this is stopped half-way through, it will resume and revert only those
-// entries which were not already reverted.
-const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
-  if (!hashes.length) { return void done(); }
+const dbGetChainTip = (ctx, completeOnly, done /*:(?Error, ?Tables.chain_t)=>void*/) => {
+  ctx.ch.query(`SELECT
+      *
+    FROM chain
+    WHERE state ${completeOnly ? "= 'complete'" : "!= 'reverted'"}
+    ORDER BY (height, dateMs) DESC
+    LIMIT 1
+  `, (err, ret) => {
+    if (err) {
+      done(err);
+    } else if (ret && ret.length) {
+      done(null, ret[0]);
+    } else {
+      done(null, {
+        hash: '0000000000000000000000000000000000000000000000000000000000000000',
+        height: -1,
+        state: 'complete',
+        dateMs: +new Date(),
+      });
+    }
+  });
+};
+
+// First we revert spends, then we revert mints, then we set the chain db back by one.
+// If the process stops at any point through this proceedure, it can be safely
+// run again because rolling back the same spends and mints again will not have any
+// effect.
+// hashes should be provided in ascending order and must be the tip of the chain
+const dbRollbackTo = (ctx, newTipHeight /*:number*/, done) => {
+  const e = makeE(done);
   const ch = ctx.ch.withSession();
-  const subSelect = `(
-    SELECT arrayJoin([${hashes.map((h) => (`toFixedString('${h}',64)`)).join()}])
-  )`;
+  let subSelect;
+  const keyFields = [ coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex ];
+  const dbChain /*:Array<Tables.chain_t>*/ = [];
   nThen((w) => {
+    // Don't do anything until we confirm that we're rolling back blocks at the tip
+    ctx.ch.query(`SELECT
+        *
+      FROM chain
+      WHERE state != 'reverted'
+        AND height > ${newTipHeight}
+      ORDER BY (height, dateMs) DESC
+      LIMIT 1 BY height
+    `, w((err, ret) => {
+      if (!ret) {
+        w.abort();
+        return void done(err);
+      }
+      if (!ret.length) {
+        w.abort();
+        return void done(new Error(
+          `dbRollbackBlock([${newTipHeight}]) does not roll anything back`)
+        );
+      }
+      if (ret[ret.length-1].height !== newTipHeight+1) {
+        w.abort();
+        return void done(new Error(
+          `dbRollbackBlock([${newTipHeight}]) only reaches [${ret[ret.length-1].height}]`)
+        );
+      }
+      ctx.snclog.debug(`ROLLBACK [${ret.length}] blocks`);
+      const hashes = [];
+      for (const ch of ret) {
+        ctx.snclog.debug(`Rollback [${ch.hash} @ ${ch.height}]`);
+        hashes.push(ch.hash);
+        dbChain.push({ hash: ch.hash, height: ch.height, state: 'reverted', dateMs: 0 });
+      }
+      subSelect = `(
+        SELECT arrayJoin([${hashes.map((h) => (`toFixedString('${h}',64)`)).join()}])
+      )`;
+    }));
+  }).nThen((w) => {
     // We need to be a little bit careful here:
     // If we just selected all entries in coins with spentBlockHash, we would potentially
     // get old data which was rolled back before (we support resuming rollback after an abort).
@@ -1199,15 +1184,7 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
           spentSequence: 0
         };
       });
-      const keyFields = [
-        coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex
-      ];
-      ch.mergeUpdate(Table_TxSpent, spentToRevert, coins, keyFields, stateMapper, w((err) => {
-        if (err) {
-          w.abort();
-          done(err);
-        }
-      }));
+      ch.mergeUpdate(Table_TxSpent, spentToRevert, coins, keyFields, stateMapper, e(w));
     }));
   }).nThen((w) => {
     const now = +new Date();
@@ -1258,17 +1235,15 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
           mintHeight: 0
         };
       });
-      const keyFields = [
-        coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex
-      ];
-      ch.mergeUpdate(Table_TxUnMinted, mintToRevert, coins, keyFields, stateMapper, w((err) => {
-        if (err) {
-          w.abort();
-          done(err);
-        }
-      }));
+      ch.mergeUpdate(Table_TxUnMinted, mintToRevert, coins, keyFields, stateMapper, e(w));
     }));
   }).nThen((w) => {
+    // Finally we have rolled everything back, now we can invalidate the entries in the chain table
+    const now = +new Date();
+    for (const ch of dbChain) { ch.dateMs = now; }
+    ctx.ch.insert(tbl_chain, dbChain, e(w));
+  }).nThen((_) => {
+    ctx.snclog.debug(`ROLLBACK [${dbChain.length}] blocks complete`);
     done();
   });
 };
@@ -1305,11 +1280,15 @@ const dbNsBurn = (ctx, done) => {
 };
 
 // Order is important because it might be stopped mid-way:
-// 1. insert blkTx entries, this table only indicates that the tx is in fact included in
-//    said block so there is no risk here
-// 2. check whether any of the blocks to insert overwrite existing blocks and revert them
-// 3. insert new transactions
-// 4. insert the block
+// Also dateMs entries are important: 1,2,3 are with one timestamp, 4 uses it's own and
+// 5 uses a new one, 5 needs to use a new time in order to replace entries from 3
+// 
+// 1. t0 insert blkTx entries - purely factual info, can be re-inserted as many times as you want
+// 2. t0 insert the blocks - purely factual information
+// 3. t0 insert chain entries with state incomplete, this way they will be rolled back
+//    if there's a crash while inserting transactions.
+// 4. t1 insert new transactions - this triggers state changes (balances, etc)
+// 5. t2 re-insert chain entries with state complete
 const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
   const now = +new Date();
   const dbBlocks /*:Array<Tables.tbl_blk_t>*/ =
@@ -1323,8 +1302,32 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
     if (maxHeight < dbBlocks[i].height) { maxHeight = dbBlocks[i].height; }
     hashByHeight[dbBlocks[i].height] = dbBlocks[i].hash;
   }
-  const needsRevert = [];
+  const dbChain /*:Array<Tables.chain_t>*/ = [];
+  for (let i = minHeight; i <= maxHeight; i++) {
+    if (!hashByHeight[i]) {
+      return void done(
+        new Error(`Unable to insert blocks range [${minHeight}-${maxHeight}] ` +
+          `because height [${i}] is missing`)
+      );
+    }
+    dbChain.push({ height: i, hash: hashByHeight[i], state: 'uncommitted', dateMs: now });
+  }
+  const e = makeE(done);
   nThen((w) => {
+    // First, we do nothing until we establish that we're building on a complete
+    // chain tip, if we're not then this is a crash.
+    dbGetChainTip(ctx, false, (err, tip) => {
+      if (!tip) {
+        w.abort();
+        return void done(err || new Error());
+      }
+      if (tip.height !== minHeight - 1) {
+        w.abort();
+        return void done(new Error(``));
+      }
+    });
+  }).nThen((w) => {
+    // 1. Insert the blkTx entries
     const blockTx /*:Array<Tables.tbl_blkTx_t>*/ = [];
     blocks.forEach((block) => {
       block.rawtx.forEach((tx) => {
@@ -1336,36 +1339,13 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
       });
     });
     if (!blockTx.length) { return; }
-    ctx.ch.insert(tbl_blkTx, blockTx, w((err) => {
-      if (err) { throw err; }
-    }));
+    ctx.ch.insert(tbl_blkTx, blockTx, e(w));
   }).nThen((w) => {
-    ctx.ch.query(`SELECT
-        argMax(hash, dateMs) AS hash,
-        height
-      FROM chain
-      WHERE height >= ${minHeight} AND height <= ${maxHeight}
-      GROUP BY height
-    `, w((err, ret) => {
-      if (!err && ret) {
-        ret.forEach((bl) => {
-          const h = hashByHeight[bl.height];
-          if (h && h !== bl.hash) { needsRevert.push(h); }
-        });
-        return;
-      }
-      ctx.snclog.error(err);
-      w.abort();
-      done();
-    }));
+    // 2. insert the blocks themselves
+    ctx.ch.insert(tbl_blk, dbBlocks, e(w));
   }).nThen((w) => {
-    dbRevertBlocks(ctx, needsRevert, w((err) => {
-      if (err) {
-        ctx.snclog.error(err);
-        w.abort();
-        done();
-      }
-    }));
+    // 3. insert the chain as incomplete
+    ctx.ch.insert(tbl_chain, dbChain, e(w));
   }).nThen((w) => {
     const txBlock = [];
     blocks.forEach((block) => {
@@ -1376,11 +1356,15 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
         });
       });
     });
-    dbInsertTransactions(ctx, txBlock, w());
+    dbInsertTransactions(ctx, txBlock, e(w));
   }).nThen((w) => {
-    ctx.ch.insert(tbl_blk, dbBlocks, w((err) => {
-      if (err) { throw err; }
-    }));
+    const now2 = +new Date();
+    // 4. re-insert chain as complete
+    for (const b of dbChain) {
+      b.dateMs = now2;
+      b.state = 'complete';
+    }
+    ctx.ch.insert(tbl_chain, dbChain, e(w));
   }).nThen((w) => {
     done();
   });
@@ -1392,7 +1376,10 @@ const checkMempool = (ctx, done) => {
   let hasMempoolTx = false;
   nThen((w) => {
     rpcGetMempool(ctx, w((err, ret) => {
-      if (err || !ret) { throw err; }
+      if (err || !ret) {
+        w.abort();
+        return void done(err);
+      }
       newTx = ret.filter((x) => ctx.mut.mempool.indexOf(x) === -1);
       nextMempool = ret;
     }));
@@ -1403,68 +1390,19 @@ const checkMempool = (ctx, done) => {
       return;
     }
     getTransactionsForHashes(ctx, newTx, w((txs) => {
-      for (const tx of txs) {
-        hasMempoolTx = true;
-        // spam
-        //ctx.snclog.debug(`Adding mempool transaction [${tx.txid}]`);
-      }
-      dbInsertTransactions(ctx, txs.map((tx) => { return { tx: tx, block: null }; }), w(() => {
-        // Only log the transactions we actually got into the mempool
+      hasMempoolTx = (txs.length > 0);
+      dbInsertTransactions(ctx, txs.map((tx) => ({ tx: tx, block: null })), w((err) => {
+        if (err) {
+          w.abort();
+          return void done(err);
+        }
+        // Filter to allow entries to leave the mempool...
         ctx.mut.mempool = ctx.mut.mempool.filter((x) => nextMempool.indexOf(x) > -1);
         for (const tx of txs) { ctx.mut.mempool.push(tx.txid); }
       }));
     }));
-  }).nThen((w) => {
+  }).nThen((_) => {
     if (hasMempoolTx) { ctx.snclog.debug(`Mempool synced`); }
-    done();
-  });
-};
-
-const repairBlocks = (ctx, done) => {
-  const missingBlockNumbers = [];
-  ctx.snclog.debug(`repairBlocks() running`);
-  nThen((w) => {
-    ctx.ch.query(`SELECT
-        *
-      FROM (
-        SELECT
-            toInt32(number) AS height
-          FROM system.numbers
-          LIMIT ${ctx.mut.headHeight}
-      )
-      WHERE height NOT IN ( SELECT height from chain )
-    `, w((err, ret) => {
-      if (err) {
-        ctx.snclog.error(err);
-        w.abort();
-        done(err);
-      } else if (ret && ret.length) {
-        for (const elem of ret) {
-          missingBlockNumbers.push(elem.height);
-        }
-        ctx.snclog.info(`Need to repair block numbers: [${missingBlockNumbers.join()}]`);
-      }
-    }));
-  }).nThen((w) => {
-    let nt = nThen;
-    const _w = w;
-    missingBlockNumbers.forEach((n) => {
-      nt = nt((w) => {
-        rpcGetBlockByHeight(ctx, n, w((err, ret) => {
-          if (ret) {
-            ctx.rpclog.debug(`Repairing block [${ret.hash}] [${n}]`);
-            dbInsertBlocks(ctx, [ret], w());
-          } else {
-            ctx.snclog.error(err);
-            w.abort();
-            _w.abort();
-            done(err);
-          }
-        }));
-      }).nThen;
-    });
-    nt(w());
-  }).nThen((w) => {
     done();
   });
 };
@@ -1558,42 +1496,91 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
   return void setTimeout(() => { getBlocks(ctx, startHash, done); }, 1000);
 };
 
-const findConvergentBlock = (
-  ctx,
-  startHeight /*:number*/,
-  startHash /*:string*/,
-  done /*:(?Error, ?{ hash: string, height: number, nextHash: ?string })=>void*/
-) => {
-  rpcGetBlockByHeight(ctx, startHeight, (err, bret) => {
-    if (!bret) {
+const rollbackAsNeeded = (ctx, done /*:(?Error)=>void*/) => {
+  if (ctx.mut.headHeight < 1) { return void done(); }
+  rpcGetHashByHeight(ctx, ctx.mut.headHeight, (err, realHash) => {
+    if (!realHash) {
       return void done(err);
-    } else if (bret.hash === startHash || startHeight === 0) {
+    } else if (realHash === ctx.mut.headHash || ctx.mut.headHeight === 0) {
       // We're in agreement with the chain, or we need to sync from 0
-      return void done(null, { hash: bret.hash, height: startHeight, nextHash: bret.nextblockhash });
+      return void done();
     }
-    ctx.rpclog.info(`FORK [${startHash}] != [${bret.hash}] searching for common block`);
-    ctx.ch.query(`SELECT
-        height,
-        hash
-      FROM chain
-      WHERE height = ${startHeight - 1}
-      ORDER BY dateMs DESC
-      LIMIT 1
-    `, (err, cret) => {
+    ctx.snclog.debug("Disagreement with chain, rollback 1 block");
+    dbRollbackTo(ctx, ctx.mut.headHeight-1, (err) => {
       if (err) {
         return void done(err);
-      } else if (!cret || !cret.length) {
-        // nothing found in chain, we need to sync from 0
-        return findConvergentBlock(ctx, 0, '', done);
       }
-      findConvergentBlock(ctx, cret[0].height, cret[0].hash, done);
+      dbGetChainTip(ctx, true, (err, tip) => {
+        if (!tip) {
+          return void done(err || new Error());
+        }
+        ctx.mut.headHash = tip.hash;
+        ctx.mut.headHeight = tip.height;
+        // Recurse backward looking for a match...
+        rollbackAsNeeded(ctx, done);
+      });
     });
   });
 };
 
+const startup = (ctx, done) => {
+  nThen((w) => {
+    dbGetChainTip(ctx, false, w((err, tip) => {
+      if (err) {
+        w.abort();
+        return void done(err);
+      }
+      if (tip.state !== 'complete') {
+        dbGetChainTip(ctx, true, w((err, ctip) => {
+          if (err) {
+            w.abort();
+            return void done(err);
+          }
+          const count = tip.height - ctip.height;
+          ctx.rpclog.info(`CHAIN TIP UNCOMMITTED - Must rollback [${count}] blocks`);
+          dbRollbackTo(ctx, ctip.height, w((err) => {
+            w.abort();
+            if (err) {
+              return void done(err);
+            } else {
+              // recurse and we should be fixed...
+              return void startup(ctx, done);
+            }
+          }));
+        }));
+      } else {
+        // tip is complete, we're happy
+        ctx.mut.headHeight = tip.height;
+        ctx.mut.headHash = tip.hash;
+      }
+    }));
+  }).nThen((w) => {
+    ctx.ch.query(`SELECT
+        mintTxid
+      FROM coins
+      WHERE bitShiftRight(stateTr, ${STATE_BITS}) = ${COIN_STATE.mempool >> STATE_BITS}
+    `, w((err, ret) => {
+      // CAUTION: This will return entries which were
+      // later updated and are nologer in the mempool
+      // For the purposes of populating the mempool, this doesn't much
+      // matter because these will all be cleared out next time we poll
+      // the mempool from the RPC.
+      if (err || !ret) {
+        // Non-critical error, continue on anyway
+        ctx.snclog.error(err);
+        w.abort();
+        return done();
+      }
+      ctx.mut.mempool = ret;
+    }));
+  }).nThen((_) => {
+    done();
+  });
+};
+
 const syncChain = (ctx, force, done) => {
-  let blocks = [];
   let nextHash;
+  const e = makeE(done);
   nThen((w) => {
     if (force) {
       ctx.mut.headHeight = 0;
@@ -1601,71 +1588,27 @@ const syncChain = (ctx, force, done) => {
       return;
     }
     if (ctx.mut.headHash) { return; }
-    nThen((w) => {
-      ctx.ch.query(`SELECT
-          height,
-          hash
-        FROM chain
-        ORDER BY (height, dateMs) DESC
-        LIMIT 1
-      `, w((err, ret) => {
-        if (err) {
-          ctx.snclog.error(err);
-          w.abort();
-          done();
-        } else if (ret && ret.length) {
-          ctx.mut.headHeight = ret[0].height;
-          ctx.mut.headHash = ret[0].hash;
-        }
-        // Fresh start, we need to sync everything
-      }));
-    }).nThen((w) => {
-      ctx.ch.query(`SELECT
-          mintTxid
-        FROM coins
-        WHERE bitShiftRight(stateTr, ${STATE_BITS}) = ${COIN_STATE.mempool >> STATE_BITS}
-      `, w((err, ret) => {
-        // CAUTION: This will return entries which were
-        // later updated and are nologer in the mempool
-        // For the purposes of populating the mempool, this doesn't much
-        // matter because these will all be cleared out next time we poll
-        // the mempool from the RPC.
-        if (err || !ret) {
-          ctx.snclog.error(err);
-          w.abort();
-          return done();
-        }
-        ctx.mut.mempool = ret;
-      }));
-    }).nThen(w());
+    startup(ctx, e(w));
   }).nThen((w) => {
-    findConvergentBlock(ctx, ctx.mut.headHeight, ctx.mut.headHash, w((err, ret) => {
-      if (!ret) {
-        ctx.snclog.error(err);
-        w.abort();
-        return done();
-      }
-      if (ret.hash !== ctx.mut.headHash || ret.height !== ctx.mut.headHeight) {
-        ctx.snclog.info(`Updating block [${ret.hash}] @ [${ret.height}]`);
-        ctx.mut.headHeight = ret.height;
-        ctx.mut.headHash = ret.hash;
-      } else if (!ret.nextHash) {
-        // Nothing to be done
-        w.abort();
-        return done();
-      }
-      nextHash = ret.nextHash;
+    rollbackAsNeeded(ctx, e(w));
+  }).nThen((w) => {
+    rpcGetHashByHeight(ctx, ctx.mut.headHeight+1, w((err, nh) => {
+      if (err) { return void error(err, w, done); }
+      nextHash = nh;
     }));
   }).nThen((w) => {
     if (!nextHash) { throw new Error(); }
     const again = (startHash) => {
       getBlocks(ctx, startHash, w((err, blocks, txio) => {
         if (!blocks) {
-          return void error(err, w);
+          return void error(err, w, done);
         }
         const topBlock = blocks[blocks.length - 1];
         ctx.rpclog.debug(`Got [${blocks.length}] blocks, [${txio}] inputs/outputs`);
-        dbInsertBlocks(ctx, blocks, w(() => {
+        dbInsertBlocks(ctx, blocks, w((err) => {
+          if (err) {
+            return void error(err, w, done);
+          }
           ctx.mut.headHeight = topBlock.height;
           ctx.mut.headHash = topBlock.hash;
         }));
@@ -1679,39 +1622,10 @@ const syncChain = (ctx, force, done) => {
     };
     again(nextHash);
   }).nThen((w) => {
-    dbNsBurn(ctx, w((err, _) => {
-      if (err) { return void error(err, w); }
-    }));
-  }).nThen((w) => {
-    if (((+new Date()) - ctx.mut.timeOfLastRepair) > MS_BETWEEN_REPAIRS) {
-      // If this calls back with an error, we'll just let it go and try again next cycle.
-      repairBlocks(ctx, w());
-    }
-
-  //   const again = () => {
-  //     syncBlockTx(ctx, w((needMore) => {
-  //       if (needMore) {
-  //         console.log("Syncing more in 1 seconds");
-  //         setTimeout(w(again), 1000);
-  //       }
-  //     }));
-  //   };
-  //   again();
-  // }).nThen((w) => {
-  //   const again = () => {
-  //     syncTransactions(ctx, w((needMore) => {
-  //       if (needMore) {
-  //         console.log("Syncing more in 1 seconds");
-  //         setTimeout(w(again), 1000);
-  //       }
-  //     }));
-  //   };
-  //   again();
+    dbNsBurn(ctx, e(w));
   }).nThen((w) => {
     if (!force) { return; }
-    dbOptimize(ctx, w((err, _) => {
-      if (err) { return void error(err, w); }
-    }));
+    dbOptimize(ctx, e(w));
   }).nThen((w) => {
     ctx.snclog.debug("Chain synced");
     done();

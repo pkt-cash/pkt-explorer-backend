@@ -313,16 +313,12 @@ const queryBlocks = (sess, urlq, filter) => {
   }
   _queryBlocks(sess, 'queryBlocks', `hash IN (
     SELECT
-        argMax(hash,dateMs) AS hash
-      FROM (
-          SELECT
-            *
-          FROM chain
-          ${(!isNaN(since)) ? `WHERE height < ${e(since)}` : ''}
-          ORDER BY height DESC
-          LIMIT ${limit}
-      )
-      GROUP BY height
+      hash
+    FROM chain
+    WHERE ${(!isNaN(since)) ? `height < ${e(since)} AND` : ''} state = 'complete'
+    ORDER BY height, dateMs DESC
+    LIMIT 1 BY height
+    LIMIT ${limit}
   )`, (ret) => {
     complete(sess, null, filter(ret));
   });
@@ -340,6 +336,7 @@ const queryBlockByNumber0 = (sess, number) => {
     SELECT
         hash
       FROM chain
+      WHERE state = 'complete'
       WHERE height = ${Number(number)}
       ORDER BY dateMs DESC
       LIMIT 1
@@ -355,8 +352,11 @@ const chain = (sess, up, limit, pgnum) => {
     SELECT
         hash
       FROM chain
-      FINAL
-      ORDER BY height ${(up) ? 'ASC' : 'DESC'}
+      WHERE state = 'complete'
+      ORDER BY
+        height ${(up) ? 'ASC' : 'DESC'},
+        dateMs DESC
+      LIMIT 1 BY height
       LIMIT ${lim.limit}
   )`, (ret) => {
     if (up) {
@@ -1357,8 +1357,8 @@ const statsCoins = (sess, num) => {
     sess.ch.query(`SELECT
         height
       FROM chain
-      FINAL
-      ORDER BY height DESC
+      WHERE state = 'complete'
+      ORDER BY height, dateMs DESC
       LIMIT 1
     `, w((err, ret) => {
       if (err || !ret || !ret.length) {
