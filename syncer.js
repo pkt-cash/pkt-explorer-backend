@@ -1137,7 +1137,7 @@ const rpcBlockToDbBlock = (block /*:RpcBlock_t*/, now) /*:Tables.tbl_blk_t*/ => 
     dateMs: now,
     networkSteward: (typeof(block.networksteward) === 'undefined') ? '' : block.networksteward,
     blocksUntilRetarget: block.blocksuntilretarget,
-    retargetEstimate: (typeof(block.retargetestimate) === 'undefined') ? 0 : block.retargetestimate,
+    retargetEstimate: (typeof(block.retargetestimate) !== 'number') ? 0 : block.retargetestimate,
   };
 };
 
@@ -1416,6 +1416,7 @@ const checkMempool = (ctx, done) => {
     }));
   }).nThen((w) => {
     if (!newTx.length) {
+      // update ctx.mut.mempool to allow entries to *leave* the mempool
       ctx.mut.mempool = nextMempool;
       return;
     }
