@@ -1206,7 +1206,9 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
           spentSequence: 0
         };
       });
-      const keyFields = [ coins.fields().mintTxid, coins.fields().mintIndex ];
+      const keyFields = [
+        coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex
+      ];
       ch.mergeUpdate(Table_TxSpent, spentToRevert, coins, keyFields, stateMapper, w((err) => {
         if (err) {
           w.abort();
@@ -1261,7 +1263,8 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
         };
       });
       const keyFields = [
-        coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex ];
+        coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex
+      ];
       ch.mergeUpdate(Table_TxUnMinted, mintToRevert, coins, keyFields, stateMapper, w((err) => {
         if (err) {
           w.abort();
