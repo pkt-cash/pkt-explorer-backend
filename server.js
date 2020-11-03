@@ -253,7 +253,7 @@ const blockCoins0 = (sess, blockHash, limit, pgnum) => {
   if (!lim) { return; }
   const subselect = `SELECT
       txid
-    FROM tbl_blkTx
+    FROM blocktx
     WHERE blockHash = '${e(blockHash)}'
     LIMIT ${lim.limit}`;
   const whereClause = `mintTxid IN (${subselect}) OR spentTxid IN (${subselect})`;
@@ -284,7 +284,7 @@ const blockCoins0 = (sess, blockHash, limit, pgnum) => {
 const _queryBlocks = (sess, fn, whereClause, then) => {
   sess.ch.query(`SELECT
       *
-    FROM tbl_blk
+    FROM blocks
     FINAL
     WHERE ${whereClause}
   `, (err, ret) => {
@@ -390,7 +390,7 @@ const packetcryptStats = (sess, limit, pgnum) => {
           pcAnnDifficulty,
           pcAnnCount,
           pcAnnCount * log2(pcAnnDifficulty) AS x
-        FROM tbl_blk
+        FROM blocks
         ORDER BY height DESC
     )
     GROUP BY date
@@ -425,7 +425,7 @@ const packetcryptBlock = (sess, hash) => {
     sess.ch.query(`WITH (
         SELECT
             max(pcAnnDifficulty)
-          FROM tbl_blk
+          FROM blocks
           WHERE height < ${block.height} and height > ${block.height - 2016}
           LIMIT 10
         ) AS maxDiff
@@ -434,7 +434,7 @@ const packetcryptBlock = (sess, hash) => {
             AS blockBits,
           floor(pcAnnCount * pcAnnDifficulty + pcBlkDifficulty) * 5 / ${ENCRYPTIONS_DIVISOR}
             AS blockEncryptions
-        FROM tbl_blk
+        FROM blocks
         WHERE hash = '${e(hash)}'
         ORDER BY dateMs DESC
         LIMIT 1
@@ -633,7 +633,7 @@ const address1 = (sess, address) => {
 const queryTx = (sess, whereClause, then) => {
   sess.ch.query(`SELECT
       *
-    FROM tbl_tx
+    FROM txns
     WHERE ${whereClause}
   `, (err, ret) => {
     if (err || !ret) {
@@ -650,7 +650,7 @@ const txByBlockHash = (sess, blockHash) => {
   queryTx(sess, `txid IN (
     SELECT
       txid
-    FROM tbl_blkTx
+    FROM blocktx
     WHERE blockHash = '${e(blockHash)}'
   )`, (x) => {
     return void complete(sess, null, x);
@@ -662,7 +662,7 @@ const Table_txids = ClickHouse.table({
 });
 
 /*::
-type GetTransactions_Tx_t = Tables.tbl_tx_t & {
+type GetTransactions_Tx_t = Tables.txns_t & {
   blockHash?: string,
   blockTime?: string,
   blockHeight?: number,
@@ -678,7 +678,7 @@ const getTransactions = (sess, whereClause, done) => {
   nThen((w) => {
     sess.ch.query(`SELECT
         *
-      FROM tbl_tx
+      FROM txns
       WHERE ${whereClause}
     `, w((err, ret) => {
       if (err || !ret) {
@@ -709,7 +709,7 @@ const getTransactions = (sess, whereClause, done) => {
             FROM (
               SELECT
                   *
-                FROM tbl_blkTx
+                FROM blocktx
                 WHERE txid IN (SELECT * FROM ${tempTable.name()})
                 ORDER BY dateMs DESC
                 LIMIT 1 BY txid
@@ -717,11 +717,11 @@ const getTransactions = (sess, whereClause, done) => {
             ALL INNER JOIN (
               SELECT
                   *
-                FROM tbl_blk
+                FROM blocks
                 WHERE hash IN (
                   SELECT
                       blockHash
-                    FROM tbl_blkTx
+                    FROM blocktx
                     WHERE txid IN (SELECT * FROM ${tempTable.name()})
                     ORDER BY dateMs DESC
                     LIMIT 1 BY txid
@@ -812,7 +812,7 @@ const blockCoins1 = (sess, blockHash, limit, pgnum) => {
   getTransactions(sess, `txid IN (
     SELECT
         txid
-      FROM tbl_blkTx
+      FROM blocktx
       WHERE blockHash = '${e(blockHash)}'
   )
   ORDER BY coinbase DESC, txid
@@ -848,7 +848,7 @@ const dailyTransactions1 = (sess, limit, pgnum) => {
   sess.ch.query(`SELECT
       toDate(firstSeen)       AS date,
       count()                 AS transactionCount
-    FROM tbl_tx
+    FROM txns
     GROUP BY toDate(firstSeen)
     ORDER BY toDate(firstSeen) DESC
     LIMIT ${lim.limit}
@@ -872,7 +872,7 @@ const dailyTransactions0 = (sess) => {
   sess.ch.query(`SELECT
       toDate(firstSeen)       AS date,
       count()                 AS transactionCount
-    FROM tbl_tx
+    FROM txns
     GROUP BY toDate(firstSeen)
     ORDER BY toDate(firstSeen) DESC
     LIMIT 1,30
@@ -1107,7 +1107,7 @@ const ns = (sess) => {
       SELECT
           networkSteward,
           height
-        FROM tbl_blk
+        FROM blocks
         ORDER BY height DESC, dateMs DESC
         LIMIT 1
     ) AS ns_height

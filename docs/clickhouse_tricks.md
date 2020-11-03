@@ -13,7 +13,7 @@ to version rows.
 In this example, `dateMs` is the timestamp which is used for replacing rows.
 
 ```sql
-CREATE TABLE tbl_tx (
+CREATE TABLE txns (
   txid FixedString(64),
   size Int32,
   version Int32,
