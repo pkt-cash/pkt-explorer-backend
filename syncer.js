@@ -419,6 +419,9 @@ const Table_TxSpent = DATABASE.addTemp('TxSpent', ClickHouse2.table/*::<Tables.T
   spentSequence:  types.UInt32,
 }));
 
+const Table_Hashes = DATABASE.addTemp('Hashes', ClickHouse2.table/*::<Tables.Hashes_t>*/({
+  hash: types.FixedString(64)
+}));
 
 const makeE = (done /*:(?Error)=>void*/) => (w /*:Nthen_WaitFor_t*/) => w((err) => {
   if (err) {
@@ -708,6 +711,29 @@ const dbCreateTxview = (ctx, done) => {
   });
 };
 
+const createChainView = (ctx, done) => {
+  const e = makeE(done);
+  nThen((w) => {
+    if (!ctx.recompute) { return; }
+    ctx.snclog.info('--recompute recomputing chain view');
+    nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS chain_v`, e(w));
+    }).nThen(w());
+  }).nThen((w) => {
+    ctx.ch.modify(`CREATE VIEW IF NOT EXISTS chain_v AS SELECT
+        *
+      FROM chain
+      ORDER BY (height, dateMs) DESC
+      LIMIT 1 BY height
+    `, e(w));
+  }).nThen((_) => {
+    if (ctx.recompute) {
+      ctx.snclog.info('--recompute recomputing chain view COMPLETE');
+    }
+    done();
+  });
+};
+
 const dbOptimize = (ctx, done) => {
   let nt = nThen;
   // filter so we don't get any materialized views
@@ -770,6 +796,8 @@ const createTables = (ctx, done) => {
     if (!ctx.recompute) { return; }
     ctx.snclog.info('--recompute OPTIMIZE all tables');
     dbOptimize(ctx, e(w));
+  }).nThen((w) => {
+    createChainView(ctx, e(w));
   }).nThen((w) => {
     dbCreateBalances(ctx, e(w));
   }).nThen((w) => {
@@ -1063,9 +1091,9 @@ const rpcBlockToDbBlock = (block /*:RpcBlock_t*/, now) /*:Tables.blocks_t*/ => {
 const dbGetChainTip = (ctx, completeOnly, done /*:(?Error, ?Tables.chain_t)=>void*/) => {
   ctx.ch.query(`SELECT
       *
-    FROM chain
+    FROM chain_v
     WHERE state ${completeOnly ? "= 'complete'" : "!= 'reverted'"}
-    ORDER BY (height, dateMs) DESC
+    ORDER BY height DESC
     LIMIT 1
   `, (err, ret) => {
     if (err) {
@@ -1078,55 +1106,10 @@ const dbGetChainTip = (ctx, completeOnly, done /*:(?Error, ?Tables.chain_t)=>voi
   });
 };
 
-// First we revert spends, then we revert mints, then we set the chain db back by one.
-// If the process stops at any point through this proceedure, it can be safely
-// run again because rolling back the same spends and mints again will not have any
-// effect.
-// hashes should be provided in ascending order and must be the tip of the chain
-const dbRollbackTo = (ctx, newTipHeight /*:number*/, done) => {
-  const e = makeE(done);
-  const ch = ctx.ch.withSession();
-  let subSelect;
+const dbRollback0 = (ch, tempTable, done) => {
   const keyFields = [ coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex ];
-  const dbChain /*:Array<Tables.chain_t>*/ = [];
+  const e = makeE(done);
   nThen((w) => {
-    // Don't do anything until we confirm that we're rolling back blocks at the tip
-    ctx.ch.query(`SELECT
-        *
-      FROM chain
-      WHERE state != 'reverted'
-        AND height > ${newTipHeight}
-      ORDER BY (height, dateMs) DESC
-      LIMIT 1 BY height
-    `, w((err, ret) => {
-      if (!ret) {
-        w.abort();
-        return void done(err);
-      }
-      if (!ret.length) {
-        w.abort();
-        return void done(new Error(
-          `dbRollbackBlock([${newTipHeight}]) does not roll anything back`)
-        );
-      }
-      if (ret[ret.length-1].height !== newTipHeight+1) {
-        w.abort();
-        return void done(new Error(
-          `dbRollbackBlock([${newTipHeight}]) only reaches [${ret[ret.length-1].height}]`)
-        );
-      }
-      ctx.snclog.debug(`ROLLBACK [${ret.length}] blocks`);
-      const hashes = [];
-      for (const ch of ret) {
-        ctx.snclog.debug(`Rollback [${ch.hash} @ ${ch.height}]`);
-        hashes.push(ch.hash);
-        dbChain.push({ hash: ch.hash, height: ch.height, state: 'reverted', dateMs: 0 });
-      }
-      subSelect = `(
-        SELECT arrayJoin([${hashes.map((h) => (`toFixedString('${h}',64)`)).join()}])
-      )`;
-    }));
-  }).nThen((w) => {
     // We need to be a little bit careful here:
     // If we just selected all entries in coins with spentBlockHash, we would potentially
     // get old data which was rolled back before (we support resuming rollback after an abort).
@@ -1154,18 +1137,18 @@ const dbRollbackTo = (ctx, newTipHeight /*:number*/, done) => {
             spentBlockHash,
             value
         FROM ${coins.name()}
-        WHERE (mintTxid,mintIndex) IN (
+        WHERE (address,mintTxid,mintIndex) IN (
           SELECT
               address,
               mintTxid,
               mintIndex
             FROM ${coins.name()}
-            WHERE spentBlockHash IN ${subSelect}
+            WHERE spentBlockHash IN (SELECT * FROM ${tempTable.name()})
         )
         ORDER BY address, mintTxid, mintIndex, dateMs DESC
         LIMIT 1 BY address, mintTxid, mintIndex
       )
-      WHERE spentBlockHash IN ${subSelect}
+      WHERE spentBlockHash IN (SELECT * FROM ${tempTable.name()})
     `, w((err, ret) => {
       if (err || !ret) {
         w.abort();
@@ -1211,12 +1194,12 @@ const dbRollbackTo = (ctx, newTipHeight /*:number*/, done) => {
               mintTxid,
               mintIndex
             FROM ${coins.name()}
-            WHERE mintBlockHash IN ${subSelect}
+            WHERE mintBlockHash IN (SELECT * FROM ${tempTable.name()})
         )
         ORDER BY address, mintTxid, mintIndex, dateMs DESC
         LIMIT 1 BY address, mintTxid, mintIndex
       )
-      WHERE mintBlockHash IN ${subSelect}
+      WHERE mintBlockHash IN (SELECT * FROM ${tempTable.name()})
     `, w((err, ret) => {
       if (err || !ret) {
         w.abort();
@@ -1241,6 +1224,61 @@ const dbRollbackTo = (ctx, newTipHeight /*:number*/, done) => {
       });
       ch.mergeUpdate(Table_TxUnMinted, mintToRevert, coins, keyFields, stateMapper, e(w));
     }));
+  }).nThen((_) => {
+    done();
+  });
+};
+
+// First we revert spends, then we revert mints, then we set the chain db back by one.
+// If the process stops at any point through this proceedure, it can be safely
+// run again because rolling back the same spends and mints again will not have any
+// effect.
+// hashes should be provided in ascending order and must be the tip of the chain
+const dbRollbackTo = (ctx, newTipHeight /*:number*/, done) => {
+  const e = makeE(done);
+  const ch = ctx.ch.withSession();
+  let hashes;
+
+  const dbChain /*:Array<Tables.chain_t>*/ = [];
+  nThen((w) => {
+    // Don't do anything until we confirm that we're rolling back blocks at the tip
+    ch.query(`SELECT
+        *
+      FROM (SELECT
+          *
+        FROM chain
+        WHERE height > ${newTipHeight}
+        ORDER BY (height, dateMs) DESC
+        LIMIT 1 BY height
+      )
+      WHERE state != 'reverted'
+    `, w((err, ret) => {
+      if (!ret) {
+        w.abort();
+        return void done(err);
+      }
+      if (!ret.length) {
+        w.abort();
+        return void done(new Error(
+          `dbRollbackBlock([${newTipHeight}]) does not roll anything back`)
+        );
+      }
+      if (ret[ret.length-1].height !== newTipHeight+1) {
+        w.abort();
+        return void done(new Error(
+          `dbRollbackBlock([${newTipHeight}]) only reaches [${ret[ret.length-1].height}]`)
+        );
+      }
+      ctx.snclog.debug(`ROLLBACK [${ret.length}] blocks`);
+      hashes = [];
+      for (const ch of ret) {
+        ctx.snclog.debug(`Rollback [${ch.hash} @ ${ch.height}]`);
+        hashes.push(ch.hash);
+        dbChain.push({ hash: ch.hash, height: ch.height, state: 'reverted', dateMs: 0 });
+      }
+    }));
+  }).nThen((w) => {
+    ch.withTempTable(Table_Hashes, hashes.map((x) => ({ hash: x })), dbRollback0, e(w));
   }).nThen((w) => {
     // Finally we have rolled everything back, now we can invalidate the entries in the chain table
     const now = +new Date();
