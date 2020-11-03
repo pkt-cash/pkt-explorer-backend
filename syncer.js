@@ -70,6 +70,7 @@ type Context_t = {
   rpclog: Log_t,
   chain: string,
   recompute: bool,
+  lw: Nthen_WaitFor_t, // not the same thing but same function signature
   mut: {
     mempool: Array<string>,
     tip: Tables.chain_t,
@@ -1530,27 +1531,7 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
 };
 
 const getBlocks = (ctx, startHash /*:string*/, done) => {
-  //ctx.snclog.debug("getBlocks("+  startHash+ ")");
-  const checkFinished = () => {
-    if (ctx.mut.gettingBlocks) {
-      setTimeout(checkFinished, 1000);
-      return true;
-    }
-    const bl = ctx.mut.blockList;
-    if (bl) {
-      ctx.mut.blockList = undefined;
-      const b0 = bl.blocks()[0];
-      if (b0 && b0.hash === startHash) {
-        done(null, bl);
-        return true;
-      }
-      ctx.rpclog.info(`Speculative getBlocks miss...`);
-      return false;
-    }
-  };
-  if (checkFinished()) { return; }
-  ctx.rpclog.info(`Direct getBlocks [${startHash.slice(0,16)}]...`);
-  getBlocks0(ctx, startHash, (bl) => {
+  const speculate = (bl) => {
     const blocks = bl.blocks();
     if (blocks.length > 0 && 'nextblockhash' in blocks[blocks.length-1]) {
       if (ctx.mut.gettingBlocks) { throw new Error(); }
@@ -1562,6 +1543,29 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
         ctx.mut.gettingBlocks = false;
       });
     }
+  };
+  //ctx.snclog.debug("getBlocks("+  startHash+ ")");
+  const checkFinished = () => {
+    if (ctx.mut.gettingBlocks) {
+      setTimeout(checkFinished, 1000);
+      return true;
+    }
+    const bl = ctx.mut.blockList;
+    if (bl) {
+      ctx.mut.blockList = undefined;
+      const b0 = bl.blocks()[0];
+      if (b0 && b0.hash === startHash) {
+        speculate(bl);
+        done(null, bl);
+        return true;
+      }
+      ctx.rpclog.info(`Speculative getBlocks miss...`);
+    }
+  };
+  if (checkFinished()) { return; }
+  ctx.rpclog.info(`Direct getBlocks [${startHash.slice(0,16)}]...`);
+  getBlocks0(ctx, startHash, (bl) => {
+    speculate(bl);
     done(null, bl);
   });
 };
@@ -1579,7 +1583,7 @@ const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
       return void done(null, blockMeta.hash);
     }
     ctx.snclog.debug("Disagreement with chain, rollback 1 block");
-    dbRollbackTo(ctx, ctx.mut.tip.height-1, (err) => {
+    dbRollbackTo(ctx, ctx.mut.tip.height-1, ctx.lw((err) => {
       if (err) {
         return void done(err);
       }
@@ -1591,7 +1595,7 @@ const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
         // Recurse backward looking for a match...
         rollbackAsNeeded(ctx, done);
       });
-    });
+    }));
   });
 };
 
@@ -1611,7 +1615,7 @@ const startup = (ctx, done) => {
           }
           const count = tip.height - ctip.height;
           ctx.rpclog.info(`CHAIN TIP UNCOMMITTED - Must rollback [${count}] blocks`);
-          dbRollbackTo(ctx, ctip.height, w((err) => {
+          dbRollbackTo(ctx, ctip.height, w(ctx.lw((err) => {
             w.abort();
             if (err) {
               return void done(err);
@@ -1619,7 +1623,7 @@ const startup = (ctx, done) => {
               // recurse and we should be fixed...
               return void startup(ctx, done);
             }
-          }));
+          })));
         }));
       } else {
         ctx.snclog.info(`Chain tip is [${tip.hash.slice(0,16)} @ ${tip.height}]`);
@@ -1651,6 +1655,20 @@ const startup = (ctx, done) => {
   });
 };
 
+const lockWrapper = () => {
+  let lock = false;
+  return (f) => {
+    if (lock) { throw new Error("Locked function called twice"); }
+    lock = true;
+    return (...x) => {
+      lock = false;
+      if (f) {
+        return f(...x);
+      }
+    };
+  };
+};
+
 const syncChain = (ctx, done) => {
   let nextHash;
   const e = makeE(done);
@@ -1680,21 +1698,20 @@ const syncChain = (ctx, done) => {
         ctx.rpclog.info(`Got [${blocks.length}] blocks, ` +
           `height: [${blocks[0].hash.slice(0,16)} @ ${blocks[0].height}] ... ` +
           `[${topBlock.hash.slice(0,16)} @ ${topBlock.height}] ([${txio}] inputs/outputs)`);
-        dbInsertBlocks(ctx, blocks, w((err) => {
+        dbInsertBlocks(ctx, blocks, w(ctx.lw((err) => {
           if (err) {
             return void error(err, w, done);
           }
           dbGetChainTip(ctx, false, w((err, tip) => {
             if (err) {
-              w.abort();
-              return void done(err);
+              return void error(err, w, done);
             } else if (tip.state !== 'complete') {
               // This is fatal
               throw new Error(`chain tip [${tip.hash} @ ${tip.height}] in state [${tip.state}]`);
             }
             ctx.mut.tip = tip;
           }));
-        }));
+        })));
         if (topBlock.confirmations === 1 && !('nextblockhash' in topBlock)) {
           ctx.rpclog.debug(`Block [${topBlock.height}] is the tip`);
           return;
@@ -1705,7 +1722,7 @@ const syncChain = (ctx, done) => {
     };
     again(nextHash);
   }).nThen((w) => {
-    dbNsBurn(ctx, e(w));
+    dbNsBurn(ctx, ctx.lw(e(w)));
   }).nThen((_) => {
     ctx.snclog.debug("Chain synced");
     done();
@@ -1745,6 +1762,7 @@ const main = (config, argv) => {
     rpclog: Log.create('rpc', config.logLevel || 'info'),
     snclog: Log.create('snc', config.logLevel || 'info'),
     recompute: (argv.indexOf('--recompute') > -1),
+    lw: lockWrapper(),
     mut: {
       tip: phonyBlock(),
       mempool: [],
