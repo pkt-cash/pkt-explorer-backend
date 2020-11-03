@@ -1152,10 +1152,19 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
     SELECT arrayJoin([${hashes.map((h) => (`toFixedString('${h}',64)`)).join()}])
   )`;
   nThen((w) => {
-    // We need to be a little bit careful here, because spentTxid can change
-    // and we might be receiving old data here. So we need to first query for
-    // the appropriate mintTxid/mintIndex based on the MOST RECENT spentBlockHash.
-    // Then we can make the update.
+    // We need to be a little bit careful here:
+    // If we just selected all entries in coins with spentBlockHash, we would potentially
+    // get old data which was rolled back before (we support resuming rollback after an abort).
+    //
+    // 1. Grab all of the coin entries where spendBlockHash is hash
+    // 2. From these, grab all copies of those coins entries, any updates which were made
+    // 3. and filter them by most recently updated
+    // 4. and finally strip out all which don't have the right spendBlockHash
+    //    since we don't support rollback of blocks deep in the chain, that should be either our
+    //    hash or ''
+    //
+    // Note that we could match on mintTxid+mintIndex and be unique, but address is also always
+    // unique and coins is indexed by address so that makes this query WAY faster
     const now = +new Date();
     ch.query(`SELECT
         address,
@@ -1196,6 +1205,9 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
           stateTr: COIN_STATE.block,
           dateMs: now,
 
+          // We don't strictly need to provide value, but we're reusing Table_TxSpent
+          // as our "unspent" merge table and Table_TxSpent has value so we must set it
+          // because mergeUpdate will update all fields present in Table_TxSpent.
           value: x.value,
 
           spentTxid: "",
@@ -1218,6 +1230,8 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
     }));
   }).nThen((w) => {
     const now = +new Date();
+    // This query works the same way as the one above, but we're looking for matches
+    // of the mintBlockHash rather than the spentBlockHash
     ch.query(`SELECT
         address,
         mintTxid,
