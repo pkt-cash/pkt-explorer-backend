@@ -1762,7 +1762,12 @@ const main = (config, argv) => {
     }
   }) /*:Context_t*/);
   nThen((w) => {
-    createTables(ctx, w());
+    createTables(ctx, w((err) => {
+      if (err) {
+        ctx.snclog.error(err);
+        process.exit(1);
+      }
+    }));
   }).nThen((w) => {
     if (ctx.recompute) { return; }
     const sync = argv.indexOf('--resync') > -1;
@@ -1771,10 +1776,14 @@ const main = (config, argv) => {
     const cycle = () => {
       nThen((w) => {
         c++;
-        if (c % 5 && !sync) { return; }
-        syncChain(ctx, sync, w());
+        if ((c % 5) !== 1 && !sync) { return; }
+        syncChain(ctx, sync, w((err) => {
+          if (err) { ctx.snclog.error(err); }
+        }));
       }).nThen((w) => {
-        checkMempool(ctx, w());
+        checkMempool(ctx, w((err) => {
+          if (err) { ctx.snclog.error(err); }
+        }));
       }).nThen((_) => {
         if (sync) { return; }
         setTimeout(w(cycle), 1000);
