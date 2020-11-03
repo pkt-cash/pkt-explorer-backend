@@ -17,6 +17,7 @@ const Config = require('./config.js');
 const MS_BETWEEN_REPAIRS = 1000 * 60 * 5;
 
 /*::
+import type { Nthen_WaitFor_t } from 'nthen';
 import type {
   ClickHouse_t,
   Table_t
@@ -421,6 +422,12 @@ const Table_TxSpent = DATABASE.addTemp('TxSpent', ClickHouse2.table/*::<Tables.T
 }));
 
 
+const makeE = (done /*:(?Error)=>void*/) => (w /*:Nthen_WaitFor_t*/) => w((err) => {
+  if (err) {
+    w.abort();
+    return void done(err);
+  }
+});
 
 
 
@@ -497,13 +504,7 @@ const dbCreateChain = (ctx, done) => {
 };
 
 const dbCreateVotes = (ctx, done) => {
-  const e = (w) => {
-    return w((err, _) => {
-      if (!err) { return; }
-      w.abort();
-      done(err);
-    });
-  };
+  const e = makeE(done);
   const selectClause = (s, voteType) => `SELECT
     '${voteType === 'voteFor' ? 'for' : 'against'}' AS type,
     ${voteType} AS candidate,
@@ -565,13 +566,7 @@ const dbCreateVotes = (ctx, done) => {
 };
 
 const dbCreateBalances = (ctx, done) => {
-  const e = (w) => {
-    return w((err, _) => {
-      if (!err) { return; }
-      w.abort();
-      done(err);
-    });
-  };
+  const e = makeE(done);
   const selectClause = (s) => `SELECT
     address,
     value * ${matchStateTrClause(s, [ MASK.block ])} AS balance
@@ -620,13 +615,7 @@ const dbCreateBalances = (ctx, done) => {
 };
 
 const dbCreateAddrIncome = (ctx, done) => {
-  const e = (w) => {
-    return w((err, _) => {
-      if (!err) { return; }
-      w.abort();
-      done(err);
-    });
-  };
+  const e = makeE(done);
   const selectClause = (s) => `SELECT
     address,
     toDate(mintTime) AS date,
@@ -687,14 +676,7 @@ const dbCreateTxview = (ctx, done) => {
     spent: [ MASK.spent ],
     burned: [ MASK.burned ],
   };
-  const e = (w) => {
-    return w((err) => {
-      if (err) {
-        w.abort();
-        return void done(err);
-      }
-    });
-  };
+  const e = makeE(done);
   const select = (txid, io, s) => `SELECT
       ${txid}  AS txid,
       '${io}'  AS type,
