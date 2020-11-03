@@ -1,5 +1,6 @@
 module.exports = {
   clickhouse: {
+    logLevel: 'info',
     host: '192.168.1.27',
     user: 'default',
     password: '<place your clickhouse password here>',

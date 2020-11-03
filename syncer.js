@@ -75,7 +75,7 @@ type Context_t = {
     tip: Tables.chain_t,
 
     gettingBlocks: bool,
-    blockList: BlockList_t,
+    blockList: ?BlockList_t,
   }
 };
 type BigInt_t = number;
@@ -1344,7 +1344,7 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
         if (minHeight !== blk.height) { continue; }
         if (blk.previousBlockHash === tip.hash) {
           ctx.snclog.info(`Adding [${blocks.length}] blocks ` +
-            `[${hashByHeight[minHeight].slice(0,16)} @ ${minHeight}] --> ` +
+            `      [${hashByHeight[minHeight].slice(0,16)} @ ${minHeight}] ... ` +
             `[${hashByHeight[maxHeight].slice(0,16)} @ ${maxHeight}]`);
           return;
         }
@@ -1460,36 +1460,29 @@ const mkBlockList = () /*:BlockList_t*/ => {
   };
 };
 
-const getBlocks0 = (ctx, startHash /*:string*/) => {
-  //ctx.snclog.debug("getBlocks0("+  startHash+ ")");
-  if (ctx.mut.gettingBlocks) { return; }
-  ctx.mut.gettingBlocks = true;
-
+const getBlocks0 = (ctx, startHash /*:string*/, done) => {
+  const blockList = mkBlockList();
   const again = (getHash /*:string*/) => {
     rpcGetBlockByHash(ctx, getHash, true, (err, ret) => {
       if (!ret) {
-        ctx.snclog.debug("Error downloading blocks " + JSON.stringify(err || null));
-        // We're going to bail out and stop the process now
-        ctx.mut.gettingBlocks = false;
+        ctx.snclog.info("Error downloading blocks " + JSON.stringify(err || null));
+        setTimeout(() => again(getHash), 10000);
         return;
       }
 
-      ctx.mut.blockList.add(ret);
+      blockList.add(ret);
       if (ret.height % 100 === 0) {
         ctx.rpclog.debug(`Block [${ret.height}] [${ret.hash}]`);
       }
 
       if (ret.confirmations === 1 && !('nextblockhash' in ret)) {
         // We have reached the tip :)
-        ctx.mut.gettingBlocks = false;
-        return;
+        return void done(blockList);
       }
 
-      const txInOut = ctx.mut.blockList.txio();
-      if (txInOut >= 200000) {
+      if (blockList.txio() > 100000 || blockList.blocks().length > 5000) {
         // Nobody is waiting for us, when we hit 100k entries, stop here
-        ctx.mut.gettingBlocks = false;
-        return;
+        return void done(blockList);
       }
 
       again(ret.nextblockhash);
@@ -1500,31 +1493,35 @@ const getBlocks0 = (ctx, startHash /*:string*/) => {
 
 const getBlocks = (ctx, startHash /*:string*/, done) => {
   //ctx.snclog.debug("getBlocks("+  startHash+ ")");
-  const blockList = ctx.mut.blockList;
-  const blocks = blockList.blocks();
-  if (!blocks.length) {
-    // nothing found, start a job and wait
-    getBlocks0(ctx, startHash);
-  } else if (!blocks[blocks.length - 1].nextblockhash) {
-    // We're at the tip
-    ctx.mut.blockList = mkBlockList();
-    return done(null, blocks, blockList.txio());
-  } else if ((blockList.txio() < 100000 && blocks.length < 5000) || blocks.length < 2) {
-    // We should wait for 50k txio at least, and if there's only one block we should get
-    // at least 2 blocks so we can check chain linkage.
-    getBlocks0(ctx, blocks[blocks.length - 1].nextblockhash);
-  } else {
-    ctx.mut.blockList = mkBlockList();
-    if (startHash !== blocks[0].hash) { throw new Error("calls to getBlocks are not sequencial"); }
-
-    // Grab the highest block in order to verify linkage
-    const topBlock = blocks.pop();
-    ctx.mut.blockList.add(topBlock);
-    getBlocks0(ctx, topBlock.nextblockhash);
-
-    return done(null, blocks, blockList.txio());
-  }
-  return void setTimeout(() => { getBlocks(ctx, startHash, done); }, 1000);
+  const checkFinished = () => {
+    if (ctx.mut.gettingBlocks) {
+      setTimeout(checkFinished, 1000);
+      return true;
+    }
+    const bl = ctx.mut.blockList;
+    if (bl) {
+      ctx.mut.blockList = undefined;
+      const b0 = bl.blocks()[0];
+      if (b0 && b0.hash === startHash) {
+        done(null, bl);
+        return true;
+      }
+      return false;
+    }
+  };
+  if (checkFinished()) { return; }
+  getBlocks0(ctx, startHash, (bl) => {
+    const blocks = bl.blocks();
+    if (blocks.length > 0 && 'nextblockhash' in blocks[blocks.length-1]) {
+      if (ctx.mut.gettingBlocks) { throw new Error(); }
+      ctx.mut.gettingBlocks = true;
+      getBlocks0(ctx, blocks[blocks.length-1].nextblockhash, (bl) => {
+        ctx.mut.blockList = bl;
+        ctx.mut.gettingBlocks = false;
+      });
+    }
+    done(null, bl);
+  });
 };
 
 const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
@@ -1631,10 +1628,13 @@ const syncChain = (ctx, done) => {
       return void done();
     }
     const again = (startHash) => {
-      getBlocks(ctx, startHash, w((err, blocks, txio) => {
-        if (!blocks) {
+      ctx.rpclog.info(`Getting blocks [${startHash.slice(0,16)}]...`);
+      getBlocks(ctx, startHash, w((err, blockList) => {
+        if (!blockList) {
           return void error(err, w, done);
         }
+        const blocks = blockList.blocks();
+        const txio = blockList.txio();
         const topBlock = blocks[blocks.length - 1];
         ctx.rpclog.info(`Got [${blocks.length}] blocks, ` +
           `height: [${blocks[0].hash.slice(0,16)} @ ${blocks[0].height}] ... ` +

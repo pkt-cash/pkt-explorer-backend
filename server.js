@@ -1577,7 +1577,7 @@ const main = (config, argv) => {
   const ctx = (Object.freeze({
     ch: ClickHouse.create(conf),
     path: Object.freeze(path),
-    log: Log.create('srv'),
+    log: Log.create('srv', config.logLevel || 'info'),
   }) /*:Context_t*/);
 
   const pi = argv.indexOf('--port');
