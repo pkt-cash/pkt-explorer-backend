@@ -1383,7 +1383,7 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
       for (const blk of dbBlocks) {
         if (minHeight !== blk.height) { continue; }
         if (blk.previousBlockHash === tip.hash) {
-          ctx.snclog.info(`Adding [${blocks.length}] blocks\t` +
+          ctx.snclog.info(`Adding   [${blocks.length}] blocks\t` +
             `[${hashByHeight[minHeight].slice(0,16)} @ ${minHeight}] ... ` +
             `[${hashByHeight[maxHeight].slice(0,16)} @ ${maxHeight}]`);
           return;
@@ -1436,7 +1436,7 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
     }
     ctx.ch.insert(TABLES.chain, dbChain, e(w));
   }).nThen((_) => {
-    ctx.snclog.info(`Adding [${blocks.length}] blocks\t - done ` +
+    ctx.snclog.info(`Adding   [${blocks.length}] blocks\t - done ` +
       `\t\t\t\t\t\t\t\t\t\t${Log.logTime(+new Date() - t0)}`);
     done(null);
   });
@@ -1533,7 +1533,7 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
 };
 
 const getBlocks = (ctx, startHash /*:string*/, done) => {
-  ctx.rpclog.info(`Getting blocks     \t[${startHash.slice(0,16)}]...`);
+  ctx.rpclog.info(`Getting blocks     \t[${startHash.slice(0,16)}] ...`);
   const t0 = +new Date();
   const speculate = (bl) => {
     if (ctx.mut.gettingBlocks) { return; }
@@ -1700,7 +1700,7 @@ const syncChain = (ctx, done) => {
         const blocks = blockList.blocks();
         const txio = blockList.txio();
         const topBlock = blocks[blocks.length - 1];
-        ctx.rpclog.info(`Got    [${blocks.length}] blocks\t` +
+        ctx.rpclog.info(`Got      [${blocks.length}] blocks\t` +
           `[${blocks[0].hash.slice(0,16)} @ ${blocks[0].height}] ... ` +
           `[${topBlock.hash.slice(0,16)} @ ${topBlock.height}] ([${txio}] inputs/outputs)\t` +
           `${Log.logTime(timeMs)}`);
