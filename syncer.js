@@ -72,7 +72,6 @@ type Context_t = {
   snclog: Log_t,
   rpclog: Log_t,
   chain: string,
-  verifiers: Array<(()=>void)=>void>,
   recompute: bool,
   mut: {
     mempool: Array<string>,
@@ -1768,7 +1767,6 @@ const main = (config, argv) => {
     chain: chainName.replace(/\/.*$/, ''),
     rpclog: Log.create('rpc'),
     snclog: Log.create('snc'),
-    verifiers: [],
     recompute: (argv.indexOf('--recompute') > -1),
     mut: {
       headHash: '',
