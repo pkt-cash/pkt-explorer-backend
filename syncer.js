@@ -1247,8 +1247,14 @@ const dbRollbackTo = (ctx, newTipHeight /*:number*/, done) => {
     for (const ch of dbChain) { ch.dateMs = now; }
     ctx.ch.insert(TABLES.chain, dbChain, e(w));
   }).nThen((_) => {
-    ctx.snclog.debug(`ROLLBACK [${dbChain.length}] blocks complete`);
-    done();
+    dbGetChainTip(ctx, true, (err, tip) => {
+      if (!tip) {
+        return void done(err || new Error());
+      }
+      ctx.snclog.info(`ROLLBACK [${dbChain.length}] blocks ` +
+        `new tip [${tip.hash.slice(0,16)} @ ${tip.height}]`);
+      done();
+    });
   });
 };
 
@@ -1336,12 +1342,17 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
       }
       for (const blk of dbBlocks) {
         if (minHeight !== blk.height) { continue; }
-        if (blk.previousBlockHash === tip.hash) { return; }
-          w.abort();
-          return void done(new Error(
-            `dbInsertBlocks() adding block at height [${minHeight}] to chain tip [${tip.height}] ` +
-              `previousBlockHash is [${blk.previousBlockHash}] but chain tip hash is ` +
-              `[${tip.hash}]`));
+        if (blk.previousBlockHash === tip.hash) {
+          ctx.snclog.info(`Adding [${blocks.length}] blocks ` +
+            `[${hashByHeight[minHeight].slice(0,16)} @ ${minHeight}] --> ` +
+            `[${hashByHeight[maxHeight].slice(0,16)} @ ${maxHeight}]`);
+          return;
+        }
+        w.abort();
+        return void done(new Error(
+          `dbInsertBlocks() adding block at height [${minHeight}] to chain tip [${tip.height}] ` +
+            `previousBlockHash is [${blk.previousBlockHash}] but chain tip hash is ` +
+            `[${tip.hash}]`));
       }
       throw new Error("could not find minHeight in dbBlocks");
     });
@@ -1384,7 +1395,8 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
       b.state = 'complete';
     }
     ctx.ch.insert(TABLES.chain, dbChain, e(w));
-  }).nThen((w) => {
+  }).nThen((_) => {
+    ctx.snclog.info(`Adding [${blocks.length}] blocks - done`);
     done();
   });
 };
@@ -1546,6 +1558,7 @@ const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
 
 const startup = (ctx, done) => {
   nThen((w) => {
+    ctx.snclog.info(`Getting chain tip`);
     dbGetChainTip(ctx, false, w((err, tip) => {
       if (err) {
         w.abort();
@@ -1570,6 +1583,7 @@ const startup = (ctx, done) => {
           }));
         }));
       } else {
+        ctx.snclog.info(`Chain tip is [${tip.hash.slice(0,16)} @ ${tip.height}]`);
         // tip is complete, we're happy
         ctx.mut.tip = tip;
       }
@@ -1622,7 +1636,9 @@ const syncChain = (ctx, done) => {
           return void error(err, w, done);
         }
         const topBlock = blocks[blocks.length - 1];
-        ctx.rpclog.debug(`Got [${blocks.length}] blocks, [${txio}] inputs/outputs`);
+        ctx.rpclog.info(`Got [${blocks.length}] blocks, ` +
+          `height: [${blocks[0].hash.slice(0,16)} @ ${blocks[0].height}] ... ` +
+          `[${topBlock.hash.slice(0,16)} @ ${topBlock.height}] ([${txio}] inputs/outputs)`);
         dbInsertBlocks(ctx, blocks, w((err) => {
           if (err) {
             return void error(err, w, done);
@@ -1685,8 +1701,8 @@ const main = (config, argv) => {
     ch: ClickHouse2.create(clickhouseConf),
     btc: (new RpcClient(chain.bitcoinRPC)/*:Rpc_Client_t*/),
     chain: chainName.replace(/\/.*$/, ''),
-    rpclog: Log.create('rpc'),
-    snclog: Log.create('snc'),
+    rpclog: Log.create('rpc', config.logLevel || 'info'),
+    snclog: Log.create('snc', config.logLevel || 'info'),
     recompute: (argv.indexOf('--recompute') > -1),
     mut: {
       tip: phonyBlock(),

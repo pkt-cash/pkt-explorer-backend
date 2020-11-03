@@ -16,6 +16,7 @@ module.exports = {
     },
     readonly: false,
   },
+  logLevel: 'info',
   enabledChains: {
     'PKT/pkt': {
       clickhouseDb: 'pkt_insight2',
