@@ -1571,11 +1571,7 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
     }
     directGetBlocks();
   };
-  if (ctx.mut.gettingBlocks) {
-    waitForBlocks();
-  } else {
-    directGetBlocks();
-  }
+  waitForBlocks();
 };
 
 const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
