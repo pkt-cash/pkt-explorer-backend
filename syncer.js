@@ -1219,6 +1219,7 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
   }).nThen((w) => {
     const now = +new Date();
     ch.query(`SELECT
+        address,
         mintTxid,
         mintIndex
       FROM (
@@ -1226,7 +1227,7 @@ const dbRevertBlocks = (ctx, hashes /*:Array<string>*/, done) => {
             address,
             mintTxid,
             mintIndex,
-            spentBlockHash
+            mintBlockHash
         FROM ${coins.name()}
         WHERE (address,mintTxid,mintIndex) IN (
           SELECT
