@@ -1340,6 +1340,7 @@ const dbNsBurn = (ctx, done) => {
 // 5. t2 re-insert chain entries with state complete
 const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
   const now = +new Date();
+  const t0 = now;
   const dbBlocks /*:Array<Tables.blocks_t>*/ =
     blocks.map((b) => rpcBlockToDbBlock(b, now));
 
@@ -1435,8 +1436,8 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
     }
     ctx.ch.insert(TABLES.chain, dbChain, e(w));
   }).nThen((_) => {
-    ctx.snclog.info(`Adding [${blocks.length}] blocks - done`);
-    done();
+    ctx.snclog.info(`Adding [${blocks.length}] blocks - done ${Log.logTime(+new Date() - t0)}`);
+    done(null);
   });
 };
 
@@ -1531,10 +1532,12 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
 };
 
 const getBlocks = (ctx, startHash /*:string*/, done) => {
+  ctx.rpclog.info(`getBlocks [${startHash.slice(0,16)}]...`);
+  const t0 = +new Date();
   const speculate = (bl) => {
+    if (ctx.mut.gettingBlocks) { return; }
     const blocks = bl.blocks();
     if (blocks.length > 0 && 'nextblockhash' in blocks[blocks.length-1]) {
-      if (ctx.mut.gettingBlocks) { throw new Error(); }
       ctx.mut.gettingBlocks = true;
       const nextHash = blocks[blocks.length-1].nextblockhash;
       ctx.rpclog.info(`Speculative getBlocks [${nextHash.slice(0,16)}]...`);
@@ -1544,30 +1547,35 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
       });
     }
   };
+  const directGetBlocks = () => {
+    ctx.rpclog.info(`Direct getBlocks [${startHash.slice(0,16)}]...`);
+    getBlocks0(ctx, startHash, (bl) => {
+      speculate(bl);
+      done(null, bl, +new Date() - t0);
+    });
+  };
   //ctx.snclog.debug("getBlocks("+  startHash+ ")");
-  const checkFinished = () => {
+  const waitForBlocks = () => {
     if (ctx.mut.gettingBlocks) {
-      setTimeout(checkFinished, 1000);
-      return true;
+      return void setTimeout(waitForBlocks, 500);
     }
     const bl = ctx.mut.blockList;
     if (bl) {
-      ctx.mut.blockList = undefined;
       const b0 = bl.blocks()[0];
       if (b0 && b0.hash === startHash) {
+        ctx.mut.blockList = undefined;
         speculate(bl);
-        done(null, bl);
-        return true;
+        return void done(null, bl, +new Date() - t0);
       }
       ctx.rpclog.info(`Speculative getBlocks miss...`);
     }
+    directGetBlocks();
   };
-  if (checkFinished()) { return; }
-  ctx.rpclog.info(`Direct getBlocks [${startHash.slice(0,16)}]...`);
-  getBlocks0(ctx, startHash, (bl) => {
-    speculate(bl);
-    done(null, bl);
-  });
+  if (ctx.mut.gettingBlocks) {
+    waitForBlocks();
+  } else {
+    directGetBlocks();
+  }
 };
 
 const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
@@ -1688,7 +1696,7 @@ const syncChain = (ctx, done) => {
       return void done();
     }
     const again = (startHash) => {
-      getBlocks(ctx, startHash, w((err, blockList) => {
+      getBlocks(ctx, startHash, w((err, blockList, timeMs) => {
         if (!blockList) {
           return void error(err, w, done);
         }
@@ -1697,7 +1705,8 @@ const syncChain = (ctx, done) => {
         const topBlock = blocks[blocks.length - 1];
         ctx.rpclog.info(`Got [${blocks.length}] blocks, ` +
           `height: [${blocks[0].hash.slice(0,16)} @ ${blocks[0].height}] ... ` +
-          `[${topBlock.hash.slice(0,16)} @ ${topBlock.height}] ([${txio}] inputs/outputs)`);
+          `[${topBlock.hash.slice(0,16)} @ ${topBlock.height}] ([${txio}] inputs/outputs) ` +
+          `${Log.logTime(timeMs)}`);
         dbInsertBlocks(ctx, blocks, w(ctx.lw((err) => {
           if (err) {
             return void error(err, w, done);
@@ -1710,14 +1719,14 @@ const syncChain = (ctx, done) => {
               throw new Error(`chain tip [${tip.hash} @ ${tip.height}] in state [${tip.state}]`);
             }
             ctx.mut.tip = tip;
+            if (topBlock.confirmations === 1 && !('nextblockhash' in topBlock)) {
+              ctx.rpclog.debug(`Block [${topBlock.height}] is the tip`);
+              return;
+            } else {
+              again(topBlock.nextblockhash);
+            }
           }));
         })));
-        if (topBlock.confirmations === 1 && !('nextblockhash' in topBlock)) {
-          ctx.rpclog.debug(`Block [${topBlock.height}] is the tip`);
-          return;
-        } else {
-          again(topBlock.nextblockhash);
-        }
       }));
     };
     again(nextHash);
