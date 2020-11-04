@@ -817,10 +817,6 @@ const rpcRes = /*::<X>*/(
 ) /*:Rpc_Client_Rpc_t<X>*/ => {
   return (err, ret) => {
     if (err) {
-      if (/503 Too busy/.test(err.message)) {
-        // Let this one fall through and just let the retrier keep polling
-        return;
-      }
       done(err);
     } else if (!ret) {
       done(new Error("no result"));
@@ -834,30 +830,11 @@ const rpcRes = /*::<X>*/(
   };
 };
 
-const retrier = (doThis) => {
-  let dead = false;
-  const to = setTimeout(() => {
-    //console.error("BTC: Retrying request...");
-    dead = true;
-    retrier(doThis);
-  }, 5000);
-  doThis((wrapped) => {
-    return (...args) => {
-      if (dead) { return; }
-      dead = true;
-      clearTimeout(to);
-      wrapped.apply(null, args);
-    };
-  });
-};
-
 const rpcGetBlockByHash = (ctx, hash /*:string*/, inclTxns, done) => {
-  retrier((ut) => {
-    ctx.btc.getBlock(hash, true, inclTxns, ut(rpcRes((err, ret) => {
-      if (!ret) { return void done(err); }
-      done(null, (ret /*:RpcBlock_t*/));
-    })));
-  });
+  ctx.btc.getBlock(hash, true, inclTxns, rpcRes((err, ret) => {
+    if (!ret) { return void done(err); }
+    done(null, (ret /*:RpcBlock_t*/));
+  }));
 };
 
 const rpcBlockMetaByHeight = (ctx, height /*:number*/, done) => {
@@ -869,28 +846,24 @@ const rpcBlockMetaByHeight = (ctx, height /*:number*/, done) => {
 
 // getrawmempool
 const rpcGetMempool = (ctx, done) => {
-  retrier((ut) => {
-    ctx.btc.batch(() => {
-      ctx.btc.batchedCalls = {
-        jsonrpc: "1.0",
-        id: "pkt-explorer-backend",
-        method: "getrawmempool",
-        params: []
-      };
-    }, ut(rpcRes((err, ret) => {
-      if (!ret) { return void done(err); }
-      done(null, (ret /*:Array<string>*/));
-    })));
-  });
+  ctx.btc.batch(() => {
+    ctx.btc.batchedCalls = {
+      jsonrpc: "1.0",
+      id: "pkt-explorer-backend",
+      method: "getrawmempool",
+      params: []
+    };
+  }, rpcRes((err, ret) => {
+    if (!ret) { return void done(err); }
+    done(null, (ret /*:Array<string>*/));
+  }));
 };
 
 const rpcGetTransaction = (ctx, hash /*:string*/, done) => {
-  retrier((ut) => {
-    ctx.btc.getRawTransaction(hash, 1, ut(rpcRes((err, ret) => {
-      if (!ret) { return void done(err); }
-      done(null, ret);
-    })));
-  });
+  ctx.btc.getRawTransaction(hash, 1, rpcRes((err, ret) => {
+    if (!ret) { return void done(err); }
+    done(null, ret);
+  }));
 };
 
 const getTransactionsForHashes = (ctx, hashes, done) => {
