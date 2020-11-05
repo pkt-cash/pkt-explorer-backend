@@ -724,7 +724,10 @@ const createChainView = (ctx, done) => {
     ctx.ch.modify(`CREATE VIEW IF NOT EXISTS chain_v AS SELECT
         *
       FROM chain
-      ORDER BY (height, dateMs) DESC
+      WHERE height >= 0
+      ORDER BY
+        height DESC,
+        dateMs DESC
       LIMIT 1 BY height
     `, e(w));
   }).nThen((_) => {
