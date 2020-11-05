@@ -316,7 +316,7 @@ const queryBlocks = (sess, urlq, filter) => {
       hash
     FROM chain_v
     WHERE ${(!isNaN(since)) ? `height < ${e(since)} AND` : ''} state = 'complete'
-    ORDER BY height, dateMs DESC
+    ORDER BY height DESC, dateMs DESC
     LIMIT 1 BY height
     LIMIT ${limit}
   )`, (ret) => {
@@ -1358,7 +1358,7 @@ const statsCoins = (sess, num) => {
         height
       FROM chain_v
       WHERE state = 'complete'
-      ORDER BY height, dateMs DESC
+      ORDER BY height DESC, dateMs DESC
       LIMIT 1
     `, w((err, ret) => {
       if (err || !ret || !ret.length) {
