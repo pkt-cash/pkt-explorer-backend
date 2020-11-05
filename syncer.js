@@ -1339,7 +1339,7 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
   nThen((w) => {
     // First, we do nothing until we establish that we're building on a complete
     // chain tip, if we're not then this is a crash.
-    dbGetChainTip(ctx, false, (err, tip) => {
+    dbGetChainTip(ctx, false, w((err, tip) => {
       if (!tip) {
         w.abort();
         return void done(err || new Error());
@@ -1368,7 +1368,7 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
             `[${tip.hash}]`));
       }
       throw new Error("could not find minHeight in dbBlocks");
-    });
+    }));
   }).nThen((w) => {
     // 1. Insert the blkTx entries
     const blockTx /*:Array<Tables.blocktx_t>*/ = [];
