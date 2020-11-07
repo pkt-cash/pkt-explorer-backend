@@ -607,6 +607,7 @@ const addressBalance = (sess, address) => {
     val.spentCount = Number(val.spentCount);
     val.balanceCount = Number(val.balanceCount);
     val.mineCount = Number(val.mineCount);
+    val.address = address;
     return void complete(sess, null, val);
   });
 };
