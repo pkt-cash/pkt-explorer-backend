@@ -1483,6 +1483,10 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
     rpcGetBlockByHash(ctx, getHash, true, (err, ret) => {
       if (!ret) {
         ctx.snclog.info("Error downloading blocks " + JSON.stringify(err || null));
+        if (err && typeof(err.code) === 'number' && err.code === -32603) {
+          // not in main chain
+          return void done(err);
+        }
         setTimeout(() => again(getHash), 10000);
         return;
       }
@@ -1494,12 +1498,12 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
 
       if (ret.confirmations === 1 && !('nextblockhash' in ret)) {
         // We have reached the tip :)
-        return void done(blockList);
+        return void done(null, blockList);
       }
 
       if (blockList.txio() > 100000 || blockList.blocks().length > 5000) {
         // Nobody is waiting for us, when we hit 100k entries, stop here
-        return void done(blockList);
+        return void done(null, blockList);
       }
 
       again(ret.nextblockhash);
@@ -1518,15 +1522,23 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
       ctx.mut.gettingBlocks = true;
       const nextHash = blocks[blocks.length-1].nextblockhash;
       ctx.rpclog.debug(`Speculative getBlocks [${nextHash.slice(0,16)}]...`);
-      getBlocks0(ctx, nextHash, (bl) => {
-        ctx.mut.blockList = bl;
+      getBlocks0(ctx, nextHash, (err, bl) => {
         ctx.mut.gettingBlocks = false;
+        if (err) {
+          // error while speculating, nothing to do
+          return;
+        }
+        ctx.mut.blockList = bl;
       });
     }
   };
   const directGetBlocks = () => {
     ctx.rpclog.debug(`Direct getBlocks [${startHash.slice(0,16)}]...`);
-    getBlocks0(ctx, startHash, (bl) => {
+    getBlocks0(ctx, startHash, (err, bl) => {
+      if (err) {
+        // Error getting blocks, fail and let the next cycle fix it
+        return void done(err);
+      }
       speculate(bl);
       done(null, bl, +new Date() - t0);
     });
