@@ -1483,7 +1483,7 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
     rpcGetBlockByHash(ctx, getHash, true, (err, ret) => {
       if (!ret) {
         ctx.snclog.info("Error downloading blocks " + JSON.stringify(err || null));
-        if (err && typeof(err.code) === 'number' && err.code === -32603) {
+        if (err && typeof((err /*:any*/).code) === 'number' && (err /*:any*/).code === -32603) {
           // not in main chain
           return void done(err);
         }
@@ -1515,7 +1515,7 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
 const getBlocks = (ctx, startHash /*:string*/, done) => {
   ctx.rpclog.info(`Getting blocks     \t[${startHash.slice(0,16)}] ...`);
   const t0 = +new Date();
-  const speculate = (bl) => {
+  const speculate = (bl /*:BlockList_t*/) => {
     if (ctx.mut.gettingBlocks) { return; }
     const blocks = bl.blocks();
     if (blocks.length > 0 && 'nextblockhash' in blocks[blocks.length-1]) {
@@ -1535,7 +1535,7 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
   const directGetBlocks = () => {
     ctx.rpclog.debug(`Direct getBlocks [${startHash.slice(0,16)}]...`);
     getBlocks0(ctx, startHash, (err, bl) => {
-      if (err) {
+      if (!bl) {
         // Error getting blocks, fail and let the next cycle fix it
         return void done(err);
       }
