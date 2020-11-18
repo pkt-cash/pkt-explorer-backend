@@ -6,7 +6,7 @@ but with some features added and others changed or removed. API v1 is an evoluti
 additional features and more standardized URL structure.
 
 ## Available frontends
-* [gorhgorh/pkt-explorer](https://github.com/gorhgorh/pkt-explorer) is the best frontend for this
+* [pkt-cash/pkt-explorer](https://github.com/pkt-cash/pkt-explorer) is the best frontend for this
 block explorer server, it is the most up to date.
 * [cjdelisle/pkt-insight-fe](https://github.com/cjdelisle/pkt-explorer-insightfe) is a second frontend
 which is forked from the [Bitcore Insight](https://github.com/bitpay/bitcore/tree/master/packages/insight)
