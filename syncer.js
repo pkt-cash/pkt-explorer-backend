@@ -1662,11 +1662,11 @@ const lockWrapper = () => {
   };
 };
 
-const syncChain = (ctx, done) => {
+const syncChain = (ctx, reinit, done) => {
   let nextHash;
   const e = makeE(done);
   nThen((w) => {
-    if (ctx.mut.tip.height > -1) { return; }
+    if (ctx.mut.tip.height > -1 && !reinit) { return; }
     startup(ctx, e(w));
   }).nThen((w) => {
     rollbackAsNeeded(ctx, w((err, nh) => {
@@ -1775,16 +1775,23 @@ const main = (config, argv) => {
     if (ctx.recompute) { return; }
 
     let c = 0;
+    let reinit = false;
     const cycle = () => {
       nThen((w) => {
         c++;
         if ((c % 5) !== 1) { return; }
-        syncChain(ctx, w((err) => {
-          if (err) { ctx.snclog.error(err); }
+        syncChain(ctx, reinit, w((err) => {
+          if (err) {
+            ctx.snclog.error(err);
+            reinit = true;
+          }
         }));
       }).nThen((w) => {
         checkMempool(ctx, w((err) => {
-          if (err) { ctx.snclog.error(err); }
+          if (err) {
+            ctx.snclog.error(err);
+            reinit = true;
+          }
         }));
       }).nThen((_) => {
         setTimeout(w(cycle), 1000);
