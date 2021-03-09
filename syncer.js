@@ -189,14 +189,14 @@ TABLES.blocks = DATABASE.add('blocks', ClickHouse2.table/*::<Tables.blocks_t>*/(
   blocksUntilRetarget: types.Int32,
   retargetEstimate: types.Float64,
 }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
-).withOrder((fields) => [ fields.hash ]));
+).withOrder((fields) => [fields.hash]));
 
 TABLES.blocktx = DATABASE.add('blocktx', ClickHouse2.table/*::<Tables.blocktx_t>*/({
   blockHash: types.FixedString(64),
   txid: types.FixedString(64),
   dateMs: types.UInt64
 }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
-).withOrder((fields) => [ fields.blockHash, fields.txid ]));
+).withOrder((fields) => [fields.blockHash, fields.txid]));
 
 TABLES.txns = DATABASE.add('txns', ClickHouse2.table/*::<Tables.txns_t>*/({
   txid: types.FixedString(64),
@@ -211,7 +211,7 @@ TABLES.txns = DATABASE.add('txns', ClickHouse2.table/*::<Tables.txns_t>*/({
   firstSeen: types.DateTime_number('UTC'),
   dateMs: types.UInt64
 }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
-).withOrder((fields) => [ fields.txid ]));
+).withOrder((fields) => [fields.txid]));
 
 TABLES.chain = DATABASE.add('chain', ClickHouse2.table/*::<Tables.chain_t>*/({
   hash: types.FixedString(64),
@@ -223,7 +223,7 @@ TABLES.chain = DATABASE.add('chain', ClickHouse2.table/*::<Tables.chain_t>*/({
     reverted: 3,
   }),
 }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
-).withOrder((fields) => [ fields.height ]));
+).withOrder((fields) => [fields.height]));
 
 // Each state is represented by a 3 bit number, the 'state' field contains both current
 // and previous state, the previous state is at bit index zero and the current state is
@@ -231,7 +231,7 @@ TABLES.chain = DATABASE.add('chain', ClickHouse2.table/*::<Tables.chain_t>*/({
 // 3 bits will only support a maximum of 8 states, and transitioning to 4 bits would
 // require masking with a 256 bit number.
 const STATE_BITS = 3;
-const PREV_STATE_MASK = (1<<STATE_BITS)-1;
+const PREV_STATE_MASK = (1 << STATE_BITS) - 1;
 const CURRENT_STATE_MASK = PREV_STATE_MASK << STATE_BITS;
 
 // These are all of the states of a transaction output which we consider worth tracking.
@@ -254,7 +254,7 @@ const COIN_STATE = [
 
   // This txout has burned (network steward payments only)
   'burned',
-].reduce((x,e,i) => { x[e] = i<<STATE_BITS; return x; }, {});
+].reduce((x, e, i) => { x[e] = i << STATE_BITS; return x; }, {});
 
 // MASK is a set of bitmasks for each of the fields which apply the rules for
 // state transitions. In order to determine whether a given state transition
@@ -299,104 +299,104 @@ const MASK /*:{ [string]: Mask_t }*/ = (() => {
 // matchStateTrClause('stateTr', [MASK.spending, MASK.spent])
 const matchStateTrClause = (sTr, masks /*:Array<Mask_t>*/) => `(
   (bitAnd( bitShiftLeft(toUInt64(1), ${sTr}),
-    0x${masks.map((m) => m.add).reduce((out, n)=>(out | n), BigInt(0)).toString(16)
+    0x${masks.map((m) => m.add).reduce((out, n) => (out | n), BigInt(0)).toString(16)
   } ) != 0) -
   (bitAnd( bitShiftLeft(toUInt64(1), ${sTr}),
-    0x${masks.map((m) => m.sub).reduce((out, n)=>(out | n), BigInt(0)).toString(16)}
+    0x${masks.map((m) => m.sub).reduce((out, n) => (out | n), BigInt(0)).toString(16)}
   ) != 0)
 )`;
 
 const coins = DATABASE.add('coins', ClickHouse2.table/*::<Tables.coins_t>*/({
   // Key
-  address:        types.String,
-  mintTxid:       types.FixedString(64),
-  mintIndex:      types.Int32,
+  address: types.String,
+  mintTxid: types.FixedString(64),
+  mintIndex: types.Int32,
 
   // This value is special, it is merged by bit-shifting the old value and adding the new.
-  stateTr:        types.Int8,
-  currentState:   types.Alias(
+  stateTr: types.Int8,
+  currentState: types.Alias(
     types.Enum(COIN_STATE),
-    `bitAnd(stateTr, ${((1<<STATE_BITS)-1)<<STATE_BITS})`
+    `bitAnd(stateTr, ${((1 << STATE_BITS) - 1) << STATE_BITS})`
   ),
-  prevState:       types.Alias(
+  prevState: types.Alias(
     types.Enum(COIN_STATE),
-    `bitShiftLeft(bitAnd(stateTr, ${(1<<STATE_BITS)-1}), ${STATE_BITS})`
+    `bitShiftLeft(bitAnd(stateTr, ${(1 << STATE_BITS) - 1}), ${STATE_BITS})`
   ),
-  dateMs:         types.UInt64,
+  dateMs: types.UInt64,
 
   // Seen information (filled when it hits mempool)
-  value:          types.Int64_string,
-  coinbase:       types.Int8,
-  voteFor:        types.String,
-  voteAgainst:    types.String,
+  value: types.Int64_string,
+  coinbase: types.Int8,
+  voteFor: types.String,
+  voteAgainst: types.String,
   // This value is special, it is merged using min()
-  seenTime:       types.DateTime_number('UTC'),
+  seenTime: types.DateTime_number('UTC'),
 
   // Mint information (filled when it enters a block)
-  mintBlockHash:  types.FixedString(64),
-  mintHeight:     types.Int32,
-  mintTime:       types.DateTime_number('UTC'),
+  mintBlockHash: types.FixedString(64),
+  mintHeight: types.Int32,
+  mintTime: types.DateTime_number('UTC'),
 
   // Spent information (filled when the relevant spend hits a block)
-  spentTxid:      types.FixedString(64),
-  spentTxinNum:   types.Int32,
+  spentTxid: types.FixedString(64),
+  spentTxinNum: types.Int32,
   spentBlockHash: types.FixedString(64),
-  spentHeight:    types.Int32,
-  spentTime:      types.DateTime_number('UTC'),
-  spentSequence:  types.UInt32,
+  spentHeight: types.Int32,
+  spentTime: types.DateTime_number('UTC'),
+  spentSequence: types.UInt32,
 }).withEngine((fields) => engines.ReplacingMergeTree(fields.dateMs)
-).withOrder((fields) => [ fields.address, fields.mintTxid, fields.mintIndex ]));
+).withOrder((fields) => [fields.address, fields.mintTxid, fields.mintIndex]));
 
 // Temporary tables for merge-updates
 
 const Table_TxSeen = DATABASE.addTemp('TxSeen', ClickHouse2.table/*::<Tables.TxSeen_t>*/({
   // Key
-  address:        types.String,
-  mintTxid:       types.FixedString(64),
-  mintIndex:      types.Int32,
+  address: types.String,
+  mintTxid: types.FixedString(64),
+  mintIndex: types.Int32,
 
-  stateTr:        types.Int8,
-  dateMs:         types.UInt64,
+  stateTr: types.Int8,
+  dateMs: types.UInt64,
 
   // Seen information (filled when it hits mempool)
-  value:          types.Int64_string,
-  voteFor:        types.String,
-  voteAgainst:    types.String,
-  coinbase:       types.Int8,
-  seenTime:       types.DateTime_number('UTC'),
+  value: types.Int64_string,
+  voteFor: types.String,
+  voteAgainst: types.String,
+  coinbase: types.Int8,
+  seenTime: types.DateTime_number('UTC'),
 }));
 
 // We re-enter the tx-seen data because many times the first time
 // we have seen the tx is when it's minted in a block.
 const Table_TxMinted = DATABASE.addTemp('TxMinted', ClickHouse2.table/*::<Tables.TxMinted_t>*/({
   // Key
-  address:        types.String,
-  mintTxid:       types.FixedString(64),
-  mintIndex:      types.Int32,
+  address: types.String,
+  mintTxid: types.FixedString(64),
+  mintIndex: types.Int32,
 
-  stateTr:        types.Int8,
-  dateMs:         types.UInt64,
+  stateTr: types.Int8,
+  dateMs: types.UInt64,
 
   // Seen information (filled when it hits mempool)
-  value:          types.Int64_string,
-  voteFor:        types.String,
-  voteAgainst:    types.String,
-  coinbase:       types.Int8,
-  seenTime:       types.DateTime_number('UTC'),
+  value: types.Int64_string,
+  voteFor: types.String,
+  voteAgainst: types.String,
+  coinbase: types.Int8,
+  seenTime: types.DateTime_number('UTC'),
 
   // Mint information (filled when it enters a block)
-  mintBlockHash:  types.FixedString(64),
-  mintHeight:     types.Int32,
-  mintTime:       types.DateTime_number('UTC'),
+  mintBlockHash: types.FixedString(64),
+  mintHeight: types.Int32,
+  mintTime: types.DateTime_number('UTC'),
 }));
 
 const Table_TxUnMinted = DATABASE.addTemp('TxUnMinted', ClickHouse2.table/*::<Tables.TxUnMinted_t>*/({
-  address:        types.String,
-  mintTxid:       types.FixedString(64),
-  mintIndex:      types.Int32,
+  address: types.String,
+  mintTxid: types.FixedString(64),
+  mintIndex: types.Int32,
 
-  stateTr:        types.Int8,
-  dateMs:         types.UInt64,
+  stateTr: types.Int8,
+  dateMs: types.UInt64,
 
   mintBlockHash: types.FixedString(64),
   mintHeight: types.Int32,
@@ -404,20 +404,20 @@ const Table_TxUnMinted = DATABASE.addTemp('TxUnMinted', ClickHouse2.table/*::<Ta
 
 // This serves also as the unspent table
 const Table_TxSpent = DATABASE.addTemp('TxSpent', ClickHouse2.table/*::<Tables.TxSpent_t>*/({
-  address:        types.String,
-  mintTxid:       types.FixedString(64),
-  mintIndex:      types.Int32,
+  address: types.String,
+  mintTxid: types.FixedString(64),
+  mintIndex: types.Int32,
 
-  stateTr:        types.Int8,
-  dateMs:         types.UInt64,
+  stateTr: types.Int8,
+  dateMs: types.UInt64,
 
   // Spent information (filled when the relevant spend hits a block)
-  spentTxid:      types.FixedString(64),
-  spentTxinNum:   types.Int32,
+  spentTxid: types.FixedString(64),
+  spentTxinNum: types.Int32,
   spentBlockHash: types.FixedString(64),
-  spentHeight:    types.Int32,
-  spentTime:      types.DateTime_number('UTC'),
-  spentSequence:  types.UInt32,
+  spentHeight: types.Int32,
+  spentTime: types.DateTime_number('UTC'),
+  spentSequence: types.UInt32,
 }));
 
 const Table_Hashes = DATABASE.addTemp('Hashes', ClickHouse2.table/*::<Tables.Hashes_t>*/({
@@ -448,7 +448,7 @@ const dbCreateVotes = (ctx, done) => {
   const selectClause = (s, voteType) => `SELECT
     '${voteType === 'voteFor' ? 'for' : 'against'}' AS type,
     ${voteType} AS candidate,
-    value * ${matchStateTrClause(s, [ MASK.block ])} AS votes
+    value * ${matchStateTrClause(s, [MASK.block])} AS votes
   `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
@@ -478,14 +478,12 @@ const dbCreateVotes = (ctx, done) => {
       ORDER BY (type, candidate)
       `, e(w));
   }).nThen((w) => {
-    ctx.ch.modify(`INSERT INTO votes ${
-      selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`, 'voteFor')}
+    ctx.ch.modify(`INSERT INTO votes ${selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`, 'voteFor')}
       FROM ${coins.name()}
       FINAL
     `, e(w));
   }).nThen((w) => {
-    ctx.ch.modify(`INSERT INTO votes ${
-      selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`, 'voteAgainst')}
+    ctx.ch.modify(`INSERT INTO votes ${selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`, 'voteAgainst')}
       FROM ${coins.name()}
       FINAL
     `, e(w));
@@ -509,7 +507,7 @@ const dbCreateBalances = (ctx, done) => {
   const e = makeE(done);
   const selectClause = (s) => `SELECT
     address,
-    value * ${matchStateTrClause(s, [ MASK.block ])} AS balance
+    value * ${matchStateTrClause(s, [MASK.block])} AS balance
   `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
@@ -561,7 +559,7 @@ const dbCreateAddrIncome = (ctx, done) => {
     toDate(mintTime) AS date,
     coinbase,
     value * ${matchStateTrClause(s, [
-      MASK.block, MASK.spending, MASK.spent, MASK.burned ])} AS received
+    MASK.block, MASK.spending, MASK.spent, MASK.burned])} AS received
   `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
@@ -610,11 +608,11 @@ const dbCreateAddrIncome = (ctx, done) => {
 
 const dbCreateTxview = (ctx, done) => {
   const fields = {
-    unconfirmed: [ MASK.mempool ],
-    received: [ MASK.block, MASK.spending, MASK.spent, MASK.burned ],
-    spending: [ MASK.spending ],
-    spent: [ MASK.spent ],
-    burned: [ MASK.burned ],
+    unconfirmed: [MASK.mempool],
+    received: [MASK.block, MASK.spending, MASK.spent, MASK.burned],
+    spending: [MASK.spending],
+    spent: [MASK.spent],
+    burned: [MASK.burned],
   };
   const e = makeE(done);
   const select = (txid, io, s) => `SELECT
@@ -622,9 +620,9 @@ const dbCreateTxview = (ctx, done) => {
       '${io}'  AS type,
       address  AS address,
       coinbase,
-      ${matchStateTrClause(s, [ MASK.spent, MASK.spending ])} AS spentcount,
+      ${matchStateTrClause(s, [MASK.spent, MASK.spending])} AS spentcount,
       ${Object.keys(fields).map((k) =>
-        `value * ${matchStateTrClause(s, fields[k])} AS ${k}`).join(',')}
+    `value * ${matchStateTrClause(s, fields[k])} AS ${k}`).join(',')}
   `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
@@ -653,12 +651,12 @@ const dbCreateTxview = (ctx, done) => {
         coinbase       Int8,
         spentcount     SimpleAggregateFunction(sum, Int64),
         ${Object.keys(fields).map((f) => (
-          `${f} SimpleAggregateFunction(sum, Int64)`
-        )).join(', ')}
+      `${f} SimpleAggregateFunction(sum, Int64)`
+    )).join(', ')}
       ) ENGINE AggregatingMergeTree()
       ORDER BY (txid, type, address, coinbase)
       `, w((err, _) => {
-        if (err) { return void error(err, w, done); }
+      if (err) { return void error(err, w, done); }
     }));
   }).nThen((w) => {
     ctx.ch.modify(`INSERT INTO txview
@@ -666,21 +664,21 @@ const dbCreateTxview = (ctx, done) => {
       FROM ${coins.name()}
       FINAL
     `, w((err, _) => {
-        if (err) {
-          w.abort();
-          return void done(err);
-        }
-      }));
+      if (err) {
+        w.abort();
+        return void done(err);
+      }
+    }));
   }).nThen((w) => {
     ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS txview_mv_out TO txview AS
       ${select('mintTxid', 'output', 'stateTr')}
       FROM ${coins.name()}
     `, w((err, _) => {
-        if (err) {
-          w.abort();
-          return void done(err);
-        }
-      }));
+      if (err) {
+        w.abort();
+        return void done(err);
+      }
+    }));
   }).nThen((w) => {
     ctx.ch.modify(`INSERT INTO txview
       ${select('spentTxid', 'input', `bitAnd(${CURRENT_STATE_MASK}, stateTr)`)}
@@ -688,22 +686,22 @@ const dbCreateTxview = (ctx, done) => {
       FINAL
       WHERE spentTxid != toFixedString('',64)
     `, w((err, _) => {
-        if (err) {
-          w.abort();
-          return void done(err);
-        }
-      }));
+      if (err) {
+        w.abort();
+        return void done(err);
+      }
+    }));
   }).nThen((w) => {
     ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS txview_mv_in TO txview AS
       ${select('spentTxid', 'input', 'stateTr')}
       FROM ${coins.name()}
       WHERE spentTxid != toFixedString('',64)
     `, w((err, _) => {
-        if (err) {
-          w.abort();
-          return void done(err);
-        }
-      }));
+      if (err) {
+        w.abort();
+        return void done(err);
+      }
+    }));
   }).nThen((_) => {
     if (ctx.recompute) {
       ctx.snclog.info('--recompute recomputing txview table COMPLETE');
@@ -781,7 +779,7 @@ const createTables = (ctx, done) => {
       if (!ret || ret.length) { return void error(err, w, done); }
     }));
   }).nThen((w) => {
-    DATABASE.create(ctx.ch, [ ClickHouse2.IF_NOT_EXISTS ], e(w));
+    DATABASE.create(ctx.ch, [ClickHouse2.IF_NOT_EXISTS], e(w));
   }).nThen((w) => {
     // Check that we're not being run with db v0
     ctx.ch.query(`SELECT
@@ -795,7 +793,7 @@ const createTables = (ctx, done) => {
   }).nThen((w) => {
     // Always make sure we have the phony block in the chain table, otherwise it's impossible
     // to load the genesis because it doesn't link to anything.
-    ctx.ch.insert(TABLES.chain, [ phonyBlock() ], e(w));
+    ctx.ch.insert(TABLES.chain, [phonyBlock()], e(w));
   }).nThen((w) => {
     if (!ctx.recompute) { return; }
     ctx.snclog.info('--recompute OPTIMIZE all tables');
@@ -949,7 +947,7 @@ const getCoinbase = (ctx, txBlock, txout, value) => {
 const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs) /*:Tables.TxMinted_t*/ => {
   const { tx, block } = txBlock;
   const value = BigInt(txout.svalue);
-  const vote = typeof(txout.vote) !== 'undefined' ? txout.vote : {};
+  const vote = typeof (txout.vote) !== 'undefined' ? txout.vote : {};
   const out = {
     address: txout.address,
     mintTxid: tx.txid,
@@ -958,14 +956,14 @@ const convertTxout = (ctx, txBlock /*:TxBlock_t*/, txout /*:RpcTxout_t*/, dateMs
     stateTr: (block) ? COIN_STATE.block : COIN_STATE.mempool,
     dateMs: dateMs,
 
-    seenTime:      (block) ? block.time : Math.floor(dateMs/1000),
-    value:         value.toString(),
-    voteFor:       vote.for || '',
-    voteAgainst:   vote.against || '',
-    coinbase:      getCoinbase(ctx, txBlock, txout, value),
+    seenTime: (block) ? block.time : Math.floor(dateMs / 1000),
+    value: value.toString(),
+    voteFor: vote.for || '',
+    voteAgainst: vote.against || '',
+    coinbase: getCoinbase(ctx, txBlock, txout, value),
     mintBlockHash: (block) ? block.hash : "",
-    mintHeight:    (block) ? block.height : -1,
-    mintTime:      (block) ? block.time : Math.floor(dateMs/1000),
+    mintHeight: (block) ? block.height : -1,
+    mintTime: (block) ? block.time : Math.floor(dateMs / 1000),
   };
   return out;
 };
@@ -981,7 +979,7 @@ const convertTx = (ctx, txBlock /*:TxBlock_t*/, dateMs) /*:Tx_t*/ => {
   const { tx, block } = txBlock;
   tx.vout.forEach((x) => { value += BigInt(x.svalue); });
   let coinbase = "";
-  if (typeof(tx.vin[0].coinbase) === 'string') {
+  if (typeof (tx.vin[0].coinbase) === 'string') {
     coinbase = tx.vin[0].coinbase;
   }
   const out = {
@@ -995,7 +993,7 @@ const convertTx = (ctx, txBlock /*:TxBlock_t*/, dateMs) /*:Tx_t*/ => {
       outputCount: tx.vout.length,
       value: value.toString(),
       coinbase: coinbase,
-      firstSeen: (block) ? block.time : Math.floor(dateMs/1000),
+      firstSeen: (block) ? block.time : Math.floor(dateMs / 1000),
       dateMs,
     },
     vin: tx.vin.filter((txin) => (!('coinbase' in txin))).map((txin) => (
@@ -1026,7 +1024,7 @@ const dbInsertTransactions = (ctx, rawTx /*:Array<TxBlock_t>*/, done /*:(?Error)
     Array.prototype.push.apply(txInputs, tx.vin);
   });
   const e = makeE(done);
-  const keyFields = [ coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex ];
+  const keyFields = [coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex];
   nThen((w) => {
     if (!transactions.length) { return; }
     ctx.ch.insert(TABLES.txns, transactions, e(w));
@@ -1057,11 +1055,11 @@ const rpcBlockToDbBlock = (block /*:RpcBlock_t*/, now) /*:Tables.blocks_t*/ => {
     pcAnnCount: block.packetcryptanncount || 0,
     pcAnnDifficulty: block.packetcryptanndifficulty || 0,
     pcBlkDifficulty: block.packetcryptblkdifficulty || 0,
-    pcVersion: (typeof(block.packetcryptversion) === 'undefined') ? -1 : block.packetcryptversion,
+    pcVersion: (typeof (block.packetcryptversion) === 'undefined') ? -1 : block.packetcryptversion,
     dateMs: now,
-    networkSteward: (typeof(block.networksteward) === 'undefined') ? '' : block.networksteward,
+    networkSteward: (typeof (block.networksteward) === 'undefined') ? '' : block.networksteward,
     blocksUntilRetarget: block.blocksuntilretarget,
-    retargetEstimate: (typeof(block.retargetestimate) !== 'number') ? 0 : block.retargetestimate,
+    retargetEstimate: (typeof (block.retargetestimate) !== 'number') ? 0 : block.retargetestimate,
   };
 };
 
@@ -1084,7 +1082,7 @@ const dbGetChainTip = (ctx, completeOnly, done /*:(?Error, ?Tables.chain_t)=>voi
 };
 
 const dbRollback0 = (ch, tempTable, done) => {
-  const keyFields = [ coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex ];
+  const keyFields = [coins.fields().address, coins.fields().mintTxid, coins.fields().mintIndex];
   const e = makeE(done);
   nThen((w) => {
     // We need to be a little bit careful here:
@@ -1240,10 +1238,10 @@ const dbRollbackTo = (ctx, newTipHeight /*:number*/, done) => {
           `dbRollbackBlock([${newTipHeight}]) does not roll anything back`)
         );
       }
-      if (ret[ret.length-1].height !== newTipHeight+1) {
+      if (ret[ret.length - 1].height !== newTipHeight + 1) {
         w.abort();
         return void done(new Error(
-          `dbRollbackBlock([${newTipHeight}]) only reaches [${ret[ret.length-1].height}]`)
+          `dbRollbackBlock([${newTipHeight}]) only reaches [${ret[ret.length - 1].height}]`)
         );
       }
       ctx.snclog.debug(`ROLLBACK [${ret.length}] blocks`);
@@ -1267,7 +1265,7 @@ const dbRollbackTo = (ctx, newTipHeight /*:number*/, done) => {
         return void done(err || new Error());
       }
       ctx.snclog.info(`ROLLBACK [${dbChain.length}] blocks ` +
-        `new tip [${tip.hash.slice(0,16)} @ ${tip.height}]`);
+        `new tip [${tip.hash.slice(0, 16)} @ ${tip.height}]`);
       done();
     });
   });
@@ -1360,15 +1358,15 @@ const dbInsertBlocks = (ctx, blocks /*:Array<RpcBlock_t>*/, done) => {
         if (minHeight !== blk.height) { continue; }
         if (blk.previousBlockHash === tip.hash) {
           ctx.snclog.info(`Adding   [${blocks.length}] blocks\t` +
-            `[${hashByHeight[minHeight].slice(0,16)} @ ${minHeight}] ... ` +
-            `[${hashByHeight[maxHeight].slice(0,16)} @ ${maxHeight}]`);
+            `[${hashByHeight[minHeight].slice(0, 16)} @ ${minHeight}] ... ` +
+            `[${hashByHeight[maxHeight].slice(0, 16)} @ ${maxHeight}]`);
           return;
         }
         w.abort();
         return void done(new Error(
           `dbInsertBlocks() adding block at height [${minHeight}] to chain tip [${tip.height}] ` +
-            `previousBlockHash is [${blk.previousBlockHash}] but chain tip hash is ` +
-            `[${tip.hash}]`));
+          `previousBlockHash is [${blk.previousBlockHash}] but chain tip hash is ` +
+          `[${tip.hash}]`));
       }
       throw new Error("could not find minHeight in dbBlocks");
     }));
@@ -1483,7 +1481,7 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
     rpcGetBlockByHash(ctx, getHash, true, (err, ret) => {
       if (!ret) {
         ctx.snclog.info("Error downloading blocks " + JSON.stringify(err || null));
-        if (err && typeof((err /*:any*/).code) === 'number' && (err /*:any*/).code === -32603) {
+        if (err && typeof ((err /*:any*/).code) === 'number' && (err /*:any*/).code === -32603) {
           // not in main chain
           return void done(err);
         }
@@ -1513,15 +1511,15 @@ const getBlocks0 = (ctx, startHash /*:string*/, done) => {
 };
 
 const getBlocks = (ctx, startHash /*:string*/, done) => {
-  ctx.rpclog.info(`Getting blocks     \t[${startHash.slice(0,16)}] ...`);
+  ctx.rpclog.info(`Getting blocks     \t[${startHash.slice(0, 16)}] ...`);
   const t0 = +new Date();
   const speculate = (bl /*:BlockList_t*/) => {
     if (ctx.mut.gettingBlocks) { return; }
     const blocks = bl.blocks();
-    if (blocks.length > 0 && 'nextblockhash' in blocks[blocks.length-1]) {
+    if (blocks.length > 0 && 'nextblockhash' in blocks[blocks.length - 1]) {
       ctx.mut.gettingBlocks = true;
-      const nextHash = blocks[blocks.length-1].nextblockhash;
-      ctx.rpclog.debug(`Speculative getBlocks [${nextHash.slice(0,16)}]...`);
+      const nextHash = blocks[blocks.length - 1].nextblockhash;
+      ctx.rpclog.debug(`Speculative getBlocks [${nextHash.slice(0, 16)}]...`);
       getBlocks0(ctx, nextHash, (err, bl) => {
         ctx.mut.gettingBlocks = false;
         if (err) {
@@ -1533,7 +1531,7 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
     }
   };
   const directGetBlocks = () => {
-    ctx.rpclog.debug(`Direct getBlocks [${startHash.slice(0,16)}]...`);
+    ctx.rpclog.debug(`Direct getBlocks [${startHash.slice(0, 16)}]...`);
     getBlocks0(ctx, startHash, (err, bl) => {
       if (!bl) {
         // Error getting blocks, fail and let the next cycle fix it
@@ -1564,7 +1562,7 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
 };
 
 const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
-  rpcBlockMetaByHeight(ctx, ctx.mut.tip.height+1, (err, blockMeta) => {
+  rpcBlockMetaByHeight(ctx, ctx.mut.tip.height + 1, (err, blockMeta) => {
     if (!blockMeta) {
       if (err && ('code' in err) && (err /*:any*/).code === -8) {
         // block number out of range, normal when we reach the tip
@@ -1576,7 +1574,7 @@ const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
       return void done(null, blockMeta.hash);
     }
     ctx.snclog.debug("Disagreement with chain, rollback 1 block");
-    dbRollbackTo(ctx, ctx.mut.tip.height-1, ctx.lw((err) => {
+    dbRollbackTo(ctx, ctx.mut.tip.height - 1, ctx.lw((err) => {
       if (err) {
         return void done(err);
       }
@@ -1619,7 +1617,7 @@ const startup = (ctx, done) => {
           })));
         }));
       } else {
-        ctx.snclog.info(`Chain tip is [${tip.hash.slice(0,16)} @ ${tip.height}]`);
+        ctx.snclog.info(`Chain tip is [${tip.hash.slice(0, 16)} @ ${tip.height}]`);
         // tip is complete, we're happy
         ctx.mut.tip = tip;
       }
@@ -1689,8 +1687,8 @@ const syncChain = (ctx, reinit, done) => {
         const txio = blockList.txio();
         const topBlock = blocks[blocks.length - 1];
         ctx.rpclog.info(`Got      [${blocks.length}] blocks\t` +
-          `[${blocks[0].hash.slice(0,16)} @ ${blocks[0].height}] ... ` +
-          `[${topBlock.hash.slice(0,16)} @ ${topBlock.height}] ([${txio}] inputs/outputs)\t` +
+          `[${blocks[0].hash.slice(0, 16)} @ ${blocks[0].height}] ... ` +
+          `[${topBlock.hash.slice(0, 16)} @ ${topBlock.height}] ([${txio}] inputs/outputs)\t` +
           `${Log.logTime(timeMs)}`);
         dbInsertBlocks(ctx, blocks, w(ctx.lw((err) => {
           if (err) {
@@ -1729,7 +1727,7 @@ const main = (config, argv) => {
     out.push(ClickHouse2.GLOBAL.typedef());
     const tables = Object.assign({}, DATABASE.tables(), DATABASE.tempTables());
     Object.keys(tables).forEach((name) => {
-      if (typeof(tables[name].typedef) !== 'function') { return; }
+      if (typeof (tables[name].typedef) !== 'function') { return; }
       out.push(tables[name].typedef(`${name}_t`));
     });
     out.push('*/');
@@ -1737,9 +1735,9 @@ const main = (config, argv) => {
     return;
   }
   const cai = argv.indexOf('--chain');
-  const chainName = argv[cai+1];
-  const chain = config.enabledChains[argv[cai+1]];
-  if (typeof(chain) !== 'object') {
+  const chainName = argv[cai + 1];
+  const chain = config.enabledChains[argv[cai + 1]];
+  if (typeof (chain) !== 'object') {
     console.error("Usage:  node ./syncer.js --chain PKT/pkt   # Begin syncing on PKT/pkt chain");
     console.error("  Possible values for --chain:  " +
       JSON.stringify(Object.keys(config.enabledChains)));
