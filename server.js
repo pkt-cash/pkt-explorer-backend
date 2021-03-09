@@ -52,7 +52,7 @@ const complete = (sess /*:Session_t*/, error /*:Error_t|null*/, data) => {
     sess.res.setHeader('Content-Type', 'application/json');
     sess.res.statusCode = error.code;
     sess.res.end(JSON.stringify(error, null, '\t'));
-  } else if (typeof(data) === 'string') {
+  } else if (typeof (data) === 'string') {
     sess.res.end(data);
   } else {
     sess.res.setHeader('Content-Type', 'application/json');
@@ -76,13 +76,13 @@ const dbError = (err, fn /*:string*/) /*:Error_t*/ => {
 };
 
 const fixDate = (d) => {
-  if (typeof(d) === 'number') {
+  if (typeof (d) === 'number') {
     if (d < 4294967296) {
       // less than 2**32, assume this is unix time
       return (new Date(d * 1000)).toISOString();
     }
     return (new Date(d)).toISOString();
-  } else if (typeof(d) === 'string') {
+  } else if (typeof (d) === 'string') {
     if (d === "") { return ""; }
     if (d === "0000-00-00 00:00:00") { return ""; }
     if (/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/.test(d)) {
@@ -96,7 +96,7 @@ const fixDate = (d) => {
     if (dd.toString() !== 'Invalid Date') {
       return dd.toISOString();
     }
-  } else if (typeof(d) === 'undefined') {
+  } else if (typeof (d) === 'undefined') {
     return undefined;
   }
   return "Invalid Date";
@@ -131,7 +131,7 @@ const genericCoins = (sess, fn, whereClause, filter) => {
     if (err || !rows) {
       return void complete(sess, dbError(err, fn));
     }
-    fixDates(rows, ['seenTime','mintTime','spentTime']);
+    fixDates(rows, ['seenTime', 'mintTime', 'spentTime']);
     complete(sess, null, filter(rows));
   });
 };
@@ -146,8 +146,8 @@ const isCannonicalPositiveIntOrZero = (num) => {
 };
 
 const limitFromPage = (sess, limit, pgnum, path, max) => {
-  if (typeof(limit) === 'undefined' || limit === '') { limit = max; }
-  if (typeof(pgnum) === 'undefined' || pgnum === '') { pgnum = 1; }
+  if (typeof (limit) === 'undefined' || limit === '') { limit = max; }
+  if (typeof (pgnum) === 'undefined' || pgnum === '') { pgnum = 1; }
   if (!isCannonicalPositiveIntOrZero(pgnum) ||
     !isCannonicalPositiveIntOrZero(limit) ||
     pgnum === 0 || limit === 0
@@ -171,7 +171,7 @@ const limitFromPage = (sess, limit, pgnum, path, max) => {
     pageNumber,
     getNext: (rowsLength /*:number|bool*/) => {
       if (rowsLength === false) {
-      } else if (typeof(rowsLength) === 'number' && rowsLength < maxLimit) {
+      } else if (typeof (rowsLength) === 'number' && rowsLength < maxLimit) {
       } else {
         return `${path}/${maxLimit}/${pageNumber + 1}`;
       }
@@ -295,7 +295,7 @@ const _queryBlocks = (sess, fn, whereClause, then) => {
       return void complete(sess, fourOhFour(sess, "no blocks found", fn));
     }
     fixDates(ret, ['time']);
-    ret.sort((a,b) => b.height - a.height);
+    ret.sort((a, b) => b.height - a.height);
     return void then(ret);
   });
 };
@@ -360,9 +360,9 @@ const chain = (sess, up, limit, pgnum) => {
       LIMIT ${lim.limit}
   )`, (ret) => {
     if (up) {
-      ret.sort((a,b) => a.height - b.height);
+      ret.sort((a, b) => a.height - b.height);
     } else {
-      ret.sort((a,b) => b.height - a.height);
+      ret.sort((a, b) => b.height - a.height);
     }
     return void complete(sess, null, {
       results: ret,
@@ -494,8 +494,8 @@ const relatedAddresses = (sess, addr, limit, pgnum, addresseswho) => {
             FROM coins
             WHERE address = '${e(addr)}'
               ${(whenWe === 'spent') ?
-              "AND spentTxid != toFixedString('',64)" :
-              "AND coinbase = 0"}
+      "AND spentTxid != toFixedString('',64)" :
+      "AND coinbase = 0"}
             GROUP BY ${ourTxidName}
           )
           GROUP BY address,txid
@@ -507,8 +507,8 @@ const relatedAddresses = (sess, addr, limit, pgnum, addresseswho) => {
         FROM coins
         WHERE address = '${e(addr)}'
           ${(whenWe === 'spent') ?
-          "AND spentTxid != toFixedString('',64)" :
-          "AND coinbase = 0"}
+      "AND spentTxid != toFixedString('',64)" :
+      "AND coinbase = 0"}
         GROUP BY ${ourTxidName}
       ) ON txid = ${ourTxidName}
     )
@@ -767,7 +767,8 @@ const getTransactions = (sess, whereClause, done) => {
             const bt = sum[elem.txid] = sum[elem.txid] || { input: {}, output: {} };
             const type = bt[elem.type] = bt[elem.type];
             const bal = type[elem.address] = type[elem.address] || {
-                value: BigInt(0), spentcount: 0, unconfirmed: BigInt(0) };
+              value: BigInt(0), spentcount: 0, unconfirmed: BigInt(0)
+            };
             bal.value += BigInt(elem.value);
             bal.unconfirmed += BigInt(elem.unconfirmed);
             bal.spentcount += Number(elem.spentcount);
@@ -783,7 +784,7 @@ const getTransactions = (sess, whereClause, done) => {
                 spentcount: v.spentcount,
               });
             }
-            out.sort((a,b) => (Number(b.value) - Number(a.value)));
+            out.sort((a, b) => (Number(b.value) - Number(a.value)));
             return out;
           };
           for (const tx of txs) {
@@ -800,7 +801,7 @@ const getTransactions = (sess, whereClause, done) => {
     if (savedError) {
       done(savedError);
     } else {
-      txs.sort((a,b) => (+new Date(b.firstSeen)) - (+new Date(a.firstSeen)));
+      txs.sort((a, b) => (+new Date(b.firstSeen)) - (+new Date(a.firstSeen)));
       done(null, txs);
     }
   });
@@ -966,7 +967,7 @@ const getCoinInfo = (sess) => {
   let r = Rewards.pkt;
   if (sess.config.blockRewards) {
     r = Rewards[sess.config.blockRewards];
-    if (typeof(r) !== 'function') {
+    if (typeof (r) !== 'function') {
       return void complete(sess, {
         code: 500,
         error: "blockReward model [" + sess.config.blockRewards + "] does not exist",
@@ -980,7 +981,7 @@ const getCoinInfo = (sess) => {
 const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
   const r = getCoinInfo(sess);
   if (!r) { return; }
-  
+
   let mc = 'AND coinbase > 0';
   if (mining === 'excluded') {
     mc = 'AND coinbase = 0';
@@ -996,7 +997,7 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
   if (isDate(limit) && isDate(pgnum)) {
     minDate = new Date(limit);
     maxDate = new Date(pgnum);
-    if ((+maxDate) - (+minDate) > 2*365*MS_PER_DAY) {
+    if ((+maxDate) - (+minDate) > 2 * 365 * MS_PER_DAY) {
       return void complete(sess, {
         code: 400,
         error: "maximum date range is 2 years",
@@ -1004,12 +1005,16 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
       });
     }
   } else {
-    lim = limitFromPage(sess, limit, pgnum, `/address/${address}/income`, 2*365);
-    if (!lim) { return; }
-    // Exclude today because it will necessarily be incomplete
-    maxDate = new Date(+new Date() - MS_PER_DAY -
-      (lim.maxLimit * (lim.pageNumber - 1) * MS_PER_DAY));
-    minDate = new Date(+maxDate - (lim.maxLimit * MS_PER_DAY));
+    lim = limitFromPage(sess, limit, pgnum, `/address/${address}/income`, 2 * 365);
+    if (!lim) {
+      return;
+    } else {
+      const l = lim; //flow
+      // Exclude today because it will necessarily be incomplete
+      maxDate = new Date(+new Date() - MS_PER_DAY -
+        (l.maxLimit * (l.pageNumber - 1) * MS_PER_DAY));
+      minDate = new Date(+maxDate - (l.maxLimit * MS_PER_DAY));
+    }
   }
 
   // If there are any days missing, we need to fill them in with zeros.
@@ -1064,13 +1069,14 @@ const addressIncome1 = (sess, address, limit, pgnum, mining, csv) => {
           receivedCoins: Number(el.received) / r.unitsPerCoin
         });
       }
-      complete(sess, null, stringifier.getHeaderString()+stringifier.stringifyRecords(outCsv));
+      complete(sess, null, stringifier.getHeaderString() + stringifier.stringifyRecords(outCsv));
     } else {
       const res = {};
       res.results = out;
       if (lim) {
+        const l = lim; // flow
         const next = lim.getNext(true);
-        res.prev = lim.prev + ((lim.prev && mining !== 'only') ? `?mining=${mining}` : '');
+        res.prev = l.prev + ((l.prev && mining !== 'only') ? `?mining=${mining}` : '');
         res.next = next + ((next && mining !== 'only') ? `?mining=${mining}` : '');
       }
       complete(sess, null, res);
@@ -1254,7 +1260,7 @@ const addressCoins = (sess, address, limit, pgnum) => {
       }
       // Remove duplicate entries from the return because we didn't do it in SQL
       const data = dedupCoins(ret);
-      fixDates(data, ['seenTime','mintTime','spentTime']);
+      fixDates(data, ['seenTime', 'mintTime', 'spentTime']);
       const coinMint = {};
       const coinSpent = {};
       let maxMint = 0;
@@ -1295,8 +1301,8 @@ const addressCoins = (sess, address, limit, pgnum) => {
   }).nThen((w) => {
     ch.modify(`DROP TABLE ${tempCoins}`, w((err, _) => {
       if (err) {
-          w.abort();
-          return void complete(sess, dbError(err, "addressCoins/drop"));
+        w.abort();
+        return void complete(sess, dbError(err, "addressCoins/drop"));
       }
     }));
   }).nThen((w) => {
@@ -1354,7 +1360,7 @@ const isValid = (sess, input) => {
 
 const statsCoins = (sess, num) => {
   nThen((w) => {
-    if (typeof(num) !== 'undefined') { return; }
+    if (typeof (num) !== 'undefined') { return; }
     sess.ch.query(`SELECT
         height
       FROM chain_v
@@ -1375,7 +1381,7 @@ const statsCoins = (sess, num) => {
     let r = Rewards.pkt;
     if (sess.config.blockRewards) {
       r = Rewards[sess.config.blockRewards];
-      if (typeof(r) !== 'function') {
+      if (typeof (r) !== 'function') {
         return void complete(sess, {
           code: 500,
           error: "blockReward model [" + sess.config.blockRewards + "] does not exist",
@@ -1415,10 +1421,10 @@ const onReq = (ctx, req, res) => {
     if (!path) {
       return void complete(sess, fourOhFour(sess, "invalid path", "onReq"));
     }
-    if (typeof(path) !== 'object') {
+    if (typeof (path) !== 'object') {
       return void complete(sess, { code: 500, error: "decoding path", fn: "onReq" });
     }
-    if (typeof(path.clickhouseDb) === 'string') {
+    if (typeof (path.clickhouseDb) === 'string') {
       sess.config = path;
       sess.ch = ctx.ch.withDb(path.clickhouseDb);
       break;
@@ -1443,7 +1449,7 @@ const onReq = (ctx, req, res) => {
         case 'daily-transactions': return void dailyTransactions1(sess, parts[2], parts[3]);
       } break;
 
-      case 'ns': switch(parts[1]) {
+      case 'ns': switch (parts[1]) {
         case 'candidates': return void nsCandidates(sess, parts[2], parts[3]);
         case undefined: return void ns(sess);
       } break;
@@ -1531,9 +1537,9 @@ const onReq = (ctx, req, res) => {
     // /api/PKT/pkt/block/
     case 'block': switch (parts[1]) {
       // /api/PKT/pkt/block/?limit=15
-      case undefined: return void queryBlocks(sess, query, (x)=>x);
+      case undefined: return void queryBlocks(sess, query, (x) => x);
       // /api/PKT/pkt/block/tip
-      case 'tip': return void queryBlocks(sess, { limit: 1 }, (x)=>x[0]);
+      case 'tip': return void queryBlocks(sess, { limit: 1 }, (x) => x[0]);
       // /api/PKT/pkt/block/:hash
       default: const blockHashOrNum = parts[1]; switch (parts[2]) {
         // /api/PKT/pkt/block/:hashOrNumber/
