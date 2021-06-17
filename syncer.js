@@ -49,7 +49,7 @@ export type Rpc_Client_Rpc_t<T> = (err: ?Error, ret: ?Rpc_Client_Res_t<T>) => vo
 export type Rpc_Client_t = {
     getBlockchainInfo: (Rpc_Client_Rpc_t<Rpc_BlockchainInfo_t>)=>void,
     submitBlock: (blk: string, cb:Rpc_Client_Rpc_t<any>)=>void,
-    getBlock: (hash: string, bool, bool, cb:Rpc_Client_Rpc_t<any>)=>void,
+    getBlock: (hash: string, number, number, cb:Rpc_Client_Rpc_t<any>)=>void,
     getBlockHash: (num: number, cb:Rpc_Client_Rpc_t<string>)=>void,
     configureMiningPayouts: (po:{[string]:number}, cb:Rpc_Client_Rpc_t<any>)=>void,
     getRawTransaction: (hash: string, verbose: number, cb:Rpc_Client_Rpc_t<any>)=>void,
@@ -832,7 +832,7 @@ const rpcRes = /*::<X>*/(
 };
 
 const rpcGetBlockByHash = (ctx, hash /*:string*/, inclTxns, done) => {
-  ctx.btc.getBlock(hash, true, inclTxns, rpcRes((err, ret) => {
+  ctx.btc.getBlock(hash, +true, +inclTxns, rpcRes((err, ret) => {
     if (!ret) { return void done(err); }
     done(null, (ret /*:RpcBlock_t*/));
   }));
@@ -1598,7 +1598,8 @@ const loadGenesis = (ctx, done) => {
     }
     rpcGetBlockByHeight(ctx, 0, true, (err, blk) => {
       if (!blk) { return void done(err || new Error("blk was undefined")); }
-      dbInsertBlocks(ctx, [ blk ], (err) => {
+      const dbblk = rpcBlockToDbBlock(blk, +new Date());
+      ctx.ch.insert(TABLES.blocks, [ dbblk ], (err) => {
         return void done(err);
       });
     });
