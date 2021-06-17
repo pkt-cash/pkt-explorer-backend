@@ -838,10 +838,10 @@ const rpcGetBlockByHash = (ctx, hash /*:string*/, inclTxns, done) => {
   }));
 };
 
-const rpcBlockMetaByHeight = (ctx, height /*:number*/, done) => {
+const rpcGetBlockByHeight = (ctx, height /*:number*/, inclTxns, done) => {
   ctx.btc.getBlockHash(height, rpcRes((err, hash) => {
     if (!hash) { return void done(err); }
-    rpcGetBlockByHash(ctx, hash, false, done);
+    rpcGetBlockByHash(ctx, hash, inclTxns, done);
   }));
 };
 
@@ -1562,7 +1562,7 @@ const getBlocks = (ctx, startHash /*:string*/, done) => {
 };
 
 const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
-  rpcBlockMetaByHeight(ctx, ctx.mut.tip.height + 1, (err, blockMeta) => {
+  rpcGetBlockByHeight(ctx, ctx.mut.tip.height + 1, false, (err, blockMeta) => {
     if (!blockMeta) {
       if (err && ('code' in err) && (err /*:any*/).code === -8) {
         // block number out of range, normal when we reach the tip
@@ -1587,6 +1587,21 @@ const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
         rollbackAsNeeded(ctx, done);
       });
     }));
+  });
+};
+
+const loadGenesis = (ctx, done) => {
+  dbGetChainTip(ctx, false, (err, _tip) => {
+    if (!err) { return void done(); }
+    if (err.message.indexOf('no data in chain table') === -1) {
+      return void done(err);
+    }
+    rpcGetBlockByHeight(ctx, 0, true, (err, blk) => {
+      if (!blk) { return void done(err || new Error("blk was undefined")); }
+      dbInsertBlocks(ctx, [ blk ], (err) => {
+        return void done(err);
+      });
+    });
   });
 };
 
@@ -1769,6 +1784,14 @@ const main = (config, argv) => {
         process.exit(1);
       }
     }));
+  }).nThen((w) => {
+    if (ctx.recompute) { return; }
+    loadGenesis(ctx, w((err) => {
+      if (err) {
+        ctx.snclog.error(err);
+        process.exit(1);
+      }
+    }))
   }).nThen((w) => {
     if (ctx.recompute) { return; }
 

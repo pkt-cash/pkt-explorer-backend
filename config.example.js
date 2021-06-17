@@ -1,9 +1,9 @@
 module.exports = {
   clickhouse: {
-    logLevel: 'info',
-    host: '192.168.1.27',
+    logLevel: 'debug',
+    host: 'localhost',
     user: 'default',
-    password: '<place your clickhouse password here>',
+    password: 'password', // place your clickhouse password here
     port: 8123,
     protocol: 'http:',
     dataObjects: true,
@@ -17,15 +17,15 @@ module.exports = {
     },
     readonly: false,
   },
-  logLevel: 'info',
+  logLevel: 'debug',
   enabledChains: {
     'PKT/pkt': {
-      clickhouseDb: 'pkt_insight2',
+      clickhouseDb: 'pkt_explorer',
       // normal, multisig, witnessKeyHash, witnessScriptHash
       bs58Prefixes: [ 0x75, 0x38, 0xa3, 0x22 ],
       bech32Prefix: 'pkt',
       bitcoinRPC: {
-        protocol: 'https',
+        protocol: 'http',
         user: 'x',
         pass: 'x',
         host: '127.0.0.1',
