@@ -49,10 +49,10 @@ and instantly accessible.
 9. make a new window, call it clickhouse-client
   1. launch clickhouse client `docker exec -it clickhouse-server clickhouse-client --password=password`
   2. You should see a prompt like the following
-    * `ClickHouse client version 20.10.2.20 (official build).`
-    * `Connecting to localhost:9000 as user default.`
-    * `Connected to ClickHouse server version 20.10.2 revision 54441.`
-    * `32d4f36b8fe1 :)`
+            ClickHouse client version 20.10.2.20 (official build).
+            Connecting to localhost:9000 as user default.
+            Connected to ClickHouse server version 20.10.2 revision 54441.
+            32d4f36b8fe1 :)
     * In this window, you will be able to query the db
 10. Create a new window, call it syncer
   1. `su explorer`
