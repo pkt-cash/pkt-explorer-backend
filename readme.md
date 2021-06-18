@@ -26,36 +26,61 @@ but still far too much to wait for a page to load. But, using a Materialized Vie
 aggregated in real time as each new block is discovered, allowing the data to be always up to date
 and instantly accessible.
 
-## How to setup
-First, you will need to setup a ClickHouse database server, you do not need to create any databases
-or tables, this will be done by the *syncer*. Once you have ClickHouse setup, you should copy
-`config.example.js` to `config.js` and then edit the file to add your username and password for
-ClickHouse, and for the PKT/Bitcoin RPC.
+### Installing PKT Explorer Backend
 
-You will need a recent version of nodejs (this software was developed using `v10.16.3`), then you
-will need to install the dependencies using npm.
-
-    npm install
-
-Once you have this completed, launch the syncer and wait for it to insert the blockchain into
-the database. This backend supports storing data on multiple blockchains but you will need one
-syncer process per blockchain.
-
-    node ./syncer.js --chain 'PKT/pkt'
-
-Once it is synced you should see a log line looking like this:
-
-    [snc] DEBUG: Chain synced
-
-After the chain is synced (or before, if you're excited to see results), you can launch the server.
-The server is chain-agnostic, it will serve data on whichever chains are specified in the
-`config.js` file.
-
-    node ./server.js --port 3000
-
-The server is also stateless, so if you wish, you can run more than one process, however as must
-of the computation is done at the ClickHouse level, it is unlikely that you will need more than
-one.
+1. Login to your server, these instructions assume you're using Fedora33 with tmux
+2. Get in the tmux, create a new window `ctrl+b c`
+3. Install docker https://docs.docker.com/engine/install/fedora/ (don't use the version from the OS)
+4. install nodejs, git, and golang `dnf install nodejs git golang`
+5. startup docker `service docker start`
+   1. Start `sudo systemctl start docker`
+6. add a user called `explorer` and with UID 101 (`useradd --uid 101 explorer`)
+  * Using uid 101 will allow clickhouse docker to access the user's home directory
+7. open a new window in tmux, name it pktd
+  1. `su explorer` to change user
+  2. Install pktd https://docs.pkt.cash/en/latest/pktd/
+  3. Make a new folder called clickhouse_data, this will be used later `mkdir ~/clickhouse_data`
+  4. Compile pktd
+    1. `cd pktd`
+    2. `./do`
+  5. Launch pktd with `./bin/pktd -ux -Px --txindex` and leave it in that window to sync
+8. make a new window, name it clickhouse-server
+  1. Launch clickhouse
+    * ```
+  docker run -it -p localhost:8123:8123 --rm --name clickhouse-server --label=disable --ulimit nofile=262144:262144 --volume=/home/explorer/clickhouse_data:/var/lib/clickhouse -e CLICKHOUSE_PASSWORD=password yandex/clickhouse-server
+  ```
+9. make a new window, call it clickhouse-client
+  1. launch clickhouse client
+    * ```
+  docker exec -it clickhouse-server clickhouse-client --password=password
+  ```
+  2. You should see a prompt like the following
+    * ```
+    ClickHouse client version 20.10.2.20 (official build).
+Connecting to localhost:9000 as user default.
+Connected to ClickHouse server version 20.10.2 revision 54441.
+32d4f36b8fe1 :)
+```
+    * In this window, you will be able to query the db
+10. Create a new window, call it syncer
+  1. `su explorer`
+  2. `cd ~`
+  3. `git clone https://github.com/pkt-cash/pkt-explorer-backend`
+  4. `cd pkt-explorer-backend`
+  5. `npm install`
+  6. `cp config.example.js config.js`
+  7. launch syncer: `node ./syncer.js --chain PKT/pkt`
+  8. check that it seems to be adding the blockchain to clickhouse
+11. Create a new window, call it server
+  1. `su explorer`
+  2. launch server: `node ./server.js --port 3002`
+12. Return to a bash window
+  1. check the server is running:
+    * `curl localhost:3002/api/v1/status/enabled-chains`
+    * Should say PKT chain is enabled
+  2. check the server is connecting to the db
+    * `curl localhost:3002/api/v1/PKT/pkt/chain/down/1/1`
+    * Should provide block information about a past block
 
 ## API Documentation
 You can find documentation on the API versions in the /docs folder:
