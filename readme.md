@@ -45,22 +45,14 @@ and instantly accessible.
     2. `./do`
   5. Launch pktd with `./bin/pktd -ux -Px --txindex` and leave it in that window to sync
 8. make a new window, name it clickhouse-server
-  1. Launch clickhouse
-    * ```
-  docker run -it -p localhost:8123:8123 --rm --name clickhouse-server --label=disable --ulimit nofile=262144:262144 --volume=/home/explorer/clickhouse_data:/var/lib/clickhouse -e CLICKHOUSE_PASSWORD=password yandex/clickhouse-server
-  ```
+  1. Launch clickhouse `docker run -it -p localhost:8123:8123 --rm --name clickhouse-server --label=disable --ulimit nofile=262144:262144 --volume=/home/explorer/clickhouse_data:/var/lib/clickhouse -e CLICKHOUSE_PASSWORD=password yandex/clickhouse-server`
 9. make a new window, call it clickhouse-client
-  1. launch clickhouse client
-    * ```
-  docker exec -it clickhouse-server clickhouse-client --password=password
-  ```
+  1. launch clickhouse client `docker exec -it clickhouse-server clickhouse-client --password=password`
   2. You should see a prompt like the following
-    * ```
-    ClickHouse client version 20.10.2.20 (official build).
-Connecting to localhost:9000 as user default.
-Connected to ClickHouse server version 20.10.2 revision 54441.
-32d4f36b8fe1 :)
-```
+    * `ClickHouse client version 20.10.2.20 (official build).`
+    * `Connecting to localhost:9000 as user default.`
+    * `Connected to ClickHouse server version 20.10.2 revision 54441.`
+    * `32d4f36b8fe1 :)`
     * In this window, you will be able to query the db
 10. Create a new window, call it syncer
   1. `su explorer`
