@@ -1,9 +1,9 @@
 
-# API v0
+# API v1
 What follows is an explanation of the API version 0 endpoints which this server provides.
 If you have not already, you should review the overall
 [API documentation](https://github.com/cjdelisle/pkt-explorer-backend/blob/master/docs/api.md)
-before delving into the specific v0 endpoints.
+before delving into the specific v1 endpoints.
 
 # GET /api/status/enabled-chains
 This query is answered by the server without consulting the database, it returns the chains which
@@ -18,7 +18,7 @@ Array<{
 }>
 ```
 
-https://pkt.cash/api/v1/status/enabled-chains
+https://explorer.pkt.cash/api/v1/status/enabled-chains
 
 <details>
 <summary><b>Response</b></summary>
@@ -41,7 +41,7 @@ By default the size limit is **500**, if you request a larger page size then thi
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/stats/richlist/3/1
+https://explorer.pkt.cash/api/v1/PKT/pkt/stats/richlist/3/1
 
 <details>
 <summary><b>Response</b></summary>
@@ -96,7 +96,7 @@ This query gets the current Network Steward as well as some basic information ab
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/ns
+https://explorer.pkt.cash/api/v1/PKT/pkt/ns
 
 <details>
 <summary><b>Response</b></summary>
@@ -129,7 +129,7 @@ number of votes which will be voting for a new election if ever the specified ca
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/ns/candidates
+https://explorer.pkt.cash/api/v1/PKT/pkt/ns/candidates
 
 <details>
 <summary><b>Response</b></summary>
@@ -161,7 +161,7 @@ object for the given address. Details of the fields are explained therein.
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2
+https://explorer.pkt.cash/api/v1/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2
 
 <details>
 <summary><b>Response</b></summary>
@@ -201,7 +201,7 @@ The default behavior is **excluded**. For getting information about mining incom
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2/coins/2/1
+https://explorer.pkt.cash/api/v1/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2/coins/2/1
 
 <details>
 <summary><b>Response</b></summary>
@@ -310,7 +310,7 @@ If you do, a `Content-Disposition` http header will be set to indicate that it i
 a name containing the address, date-range (which is detected even if you are did not specify the date) and
 type of income that is included, for example:
 
-https://pkt.cash/api/v1/PKT/pkt/address/pkt1q2sj8djct9e4w0a0770l0gtquq6m4s4qd7fk04t/income/2020-03-22/2020-03-24?mining=included&csv=1
+https://explorer.pkt.cash/api/v1/PKT/pkt/address/pkt1q2sj8djct9e4w0a0770l0gtquq6m4s4qd7fk04t/income/2020-03-22/2020-03-24?mining=included&csv=1
 
 Downloads file:
 
@@ -332,7 +332,7 @@ include:
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2/income/5/1
+https://explorer.pkt.cash/api/v1/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2/income/5/1
 
 <details>
 <summary><b>Response</b></summary>
@@ -374,7 +374,7 @@ https://pkt.cash/api/v1/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2ama
 
 ## Example CSV
 
-https://pkt.cash/api/v1/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2/income/5/1?csv=1
+https://explorer.pkt.cash/api/v1/PKT/pkt/address/pkt1q6hqsqhqdgqfd8t3xwgceulu7k9d9w5t2amath0qxyfjlvl3s3u4sjza2g2/income/5/1?csv=1
 
 <details>
 <summary><b>Response</b></summary>
@@ -400,7 +400,7 @@ to verify that the block in question is not an
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/block/9c0c1c59d9fca48b8abf1f2b06b059c59e81980ba3f73a68c7223637de0072d8
+https://explorer.pkt.cash/api/v1/PKT/pkt/block/9c0c1c59d9fca48b8abf1f2b06b059c59e81980ba3f73a68c7223637de0072d8
 
 <details>
 <summary><b>Response</b></summary>
@@ -446,7 +446,7 @@ another block.
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/block/9c0c1c59d9fca48b8abf1f2b06b059c59e81980ba3f73a68c7223637de0072d8/coins
+https://explorer.pkt.cash/api/v1/PKT/pkt/block/9c0c1c59d9fca48b8abf1f2b06b059c59e81980ba3f73a68c7223637de0072d8/coins
 
 <details>
 <summary><b>Response</b></summary>
@@ -1860,7 +1860,7 @@ so `/chain/up/1/500` will get the block with height number 499.
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/chain/up/1/500
+https://explorer.pkt.cash/api/v1/PKT/pkt/chain/up/1/500
 
 <details>
 <summary><b>Response</b></summary>
@@ -1908,7 +1908,7 @@ documentation for explanation of each of the fields.
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/chain/down/1/1
+https://explorer.pkt.cash/api/v1/PKT/pkt/chain/down/1/1
 
 <details>
 <summary><b>Response</b></summary>
@@ -1953,7 +1953,7 @@ object, see that documentation for explanation of each of the fields.
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/tx/1301091c426550a47e95b070b3cce51d91f7c625d4053853cda8fcc61edecf76
+https://explorer.pkt.cash/api/v1/PKT/pkt/tx/1301091c426550a47e95b070b3cce51d91f7c625d4053853cda8fcc61edecf76
 
 <details>
 <summary><b>Response</b></summary>
@@ -2026,7 +2026,7 @@ This query shows the [Coins_t](https://github.com/cjdelisle/pkt-explorer-backend
 objects for each of the individual inputs and each of the outputs in this transaction. While it is not usually
 what one wants to see, it provides exact detail which can be nice for debugging purposes.
 
-https://pkt.cash/api/v1/PKT/pkt/tx/1301091c426550a47e95b070b3cce51d91f7c625d4053853cda8fcc61edecf76/detail
+https://explorer.pkt.cash/api/v1/PKT/pkt/tx/1301091c426550a47e95b070b3cce51d91f7c625d4053853cda8fcc61edecf76/detail
 
 <details>
 <summary><b>Response</b></summary>
@@ -2364,7 +2364,7 @@ this block.
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/packetcrypt/4e72138f8cfeadc30abe17022d690e7e2cb9940eafd818ae707e0faa287c562c
+https://explorer.pkt.cash/api/v1/PKT/pkt/packetcrypt/4e72138f8cfeadc30abe17022d690e7e2cb9940eafd818ae707e0faa287c562c
 
 <details>
 <summary><b>Response</b></summary>
@@ -2394,7 +2394,7 @@ performed by all PacketCrypt miners over the course of this day.
 
 ## Example
 
-https://pkt.cash/api/v1/PKT/pkt/packetcrypt/stats/1/1
+https://explorer.pkt.cash/api/v1/PKT/pkt/packetcrypt/stats/1/1
 
 <details>
 <summary><b>Response</b></summary>
