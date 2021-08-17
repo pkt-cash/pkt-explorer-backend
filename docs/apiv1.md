@@ -1,6 +1,6 @@
 
 # API v1
-What follows is an explanation of the API version 0 endpoints which this server provides.
+What follows is an explanation of the API version 1 endpoints which this server provides.
 If you have not already, you should review the overall
 [API documentation](https://github.com/cjdelisle/pkt-explorer-backend/blob/master/docs/api.md)
 before delving into the specific v1 endpoints.
