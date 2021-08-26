@@ -1599,9 +1599,22 @@ const loadGenesis = (ctx, done) => {
     rpcGetBlockByHeight(ctx, 0, true, (err, blk) => {
       if (!blk) { return void done(err || new Error("blk was undefined")); }
       const dbblk = rpcBlockToDbBlock(blk, +new Date());
-      ctx.ch.insert(TABLES.blocks, [ dbblk ], (err) => {
-        return void done(err);
-      });
+      nThen((w) => {
+        ctx.ch.insert(TABLES.blocks, [ dbblk ], w((err) => {
+          if (err) { w.abort(); return void done(err); }
+        }));
+      }).nThen((w) => {
+        ctx.ch.insert(TABLES.chain, [{
+          hash: dbblk.hash,
+          height: -1,
+          state: 'complete',
+          dateMs: +new Date(),
+        }], w((err) => {
+          if (err) { w.abort(); return void done(err); }
+        }));
+      }).nThen((_) => {
+        done();
+      })
     });
   });
 };
