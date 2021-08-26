@@ -1606,7 +1606,7 @@ const loadGenesis = (ctx, done) => {
       }).nThen((w) => {
         ctx.ch.insert(TABLES.chain, [{
           hash: dbblk.hash,
-          height: -1,
+          height: 0,
           state: 'complete',
           dateMs: +new Date(),
         }], w((err) => {
