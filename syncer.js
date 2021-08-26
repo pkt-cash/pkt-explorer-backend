@@ -722,6 +722,7 @@ const createChainView = (ctx, done) => {
     ctx.ch.modify(`CREATE VIEW IF NOT EXISTS chain_v AS SELECT
         *
       FROM chain
+      WHERE height >= 0
       ORDER BY
         height DESC,
         dateMs DESC
@@ -1589,6 +1590,22 @@ const rollbackAsNeeded = (ctx, done /*:(?Error, ?string)=>void*/) => {
   });
 };
 
+const loadGenesis = (ctx, done) => {
+  dbGetChainTip(ctx, false, (err, _tip) => {
+    if (!err) { return void done(); }
+    if (err.message.indexOf('no data in chain table') === -1) {
+      return void done(err);
+    }
+    rpcGetBlockByHeight(ctx, 0, true, (err, blk) => {
+      if (!blk) { return void done(err || new Error("blk was undefined")); }
+      const dbblk = rpcBlockToDbBlock(blk, +new Date());
+      ctx.ch.insert(TABLES.blocks, [ dbblk ], (err) => {
+        return void done(err);
+      });
+    });
+  });
+};
+
 const startup = (ctx, done) => {
   nThen((w) => {
     ctx.snclog.info(`Getting chain tip`);
@@ -1768,6 +1785,14 @@ const main = (config, argv) => {
         process.exit(1);
       }
     }));
+  }).nThen((w) => {
+    if (ctx.recompute) { return; }
+    loadGenesis(ctx, w((err) => {
+      if (err) {
+        ctx.snclog.error(err);
+        process.exit(1);
+      }
+    }))
   }).nThen((w) => {
     if (ctx.recompute) { return; }
 
