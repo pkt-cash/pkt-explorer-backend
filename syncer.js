@@ -1155,12 +1155,14 @@ const dbRollback0 = (ch, tempTable, done) => {
     ch.query(`SELECT
         address,
         mintTxid,
-        mintIndex
+        mintIndex,
+        coinbase
       FROM (
         SELECT
             address,
             mintTxid,
             mintIndex,
+            coinbase,
             mintBlockHash
         FROM ${coins.name()}
         WHERE (address,mintTxid,mintIndex) IN (
@@ -1186,11 +1188,7 @@ const dbRollback0 = (ch, tempTable, done) => {
           mintTxid: x.mintTxid,
           mintIndex: x.mintIndex,
 
-          // This allows the possibility of a coinbase transaction ending
-          // up in the mempool state, which is invalid by definition, but
-          // we don't really have any other way to speak about an orphaned
-          // coinbase tx so we might as well accept it like this.
-          stateTr: COIN_STATE.mempool,
+          stateTr: (x.coinbase) ? COIN_STATE.nothing : COIN_STATE.mempool,
           dateMs: now,
 
           mintBlockHash: "",
