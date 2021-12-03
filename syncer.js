@@ -791,6 +791,15 @@ const createTables = (ctx, done) => {
       }
     }));
   }).nThen((w) => {
+    ctx.ch.modify(`ALTER
+      TABLE coins
+      ADD INDEX IF NOT EXISTS bySpentBlockHash spentBlockHash
+      TYPE bloom_filter
+      GRANULARITY 1
+    `, w((err, _ret) => {
+      if (err) { return void error(err, w, done); }
+    }));
+  }).nThen((w) => {
     // Always make sure we have the phony block in the chain table, otherwise it's impossible
     // to load the genesis because it doesn't link to anything.
     ctx.ch.insert(TABLES.chain, [phonyBlock()], e(w));
@@ -1165,13 +1174,14 @@ const dbRollback0 = (ch, tempTable, done) => {
             coinbase,
             mintBlockHash
         FROM ${coins.name()}
-        WHERE (address,mintTxid,mintIndex) IN (
+        WHERE (address,mintTxid) IN (
           SELECT
               address,
-              mintTxid,
-              mintIndex
-            FROM ${coins.name()}
-            WHERE mintBlockHash IN (SELECT * FROM ${tempTable.name()})
+              txid
+            FROM txview
+            WHERE txid IN (
+              SELECT txid FROM blocktx WHERE blockHash IN (SELECT * FROM ${tempTable.name()})
+            )
         )
         ORDER BY address, mintTxid, mintIndex, dateMs DESC
         LIMIT 1 BY address, mintTxid, mintIndex
