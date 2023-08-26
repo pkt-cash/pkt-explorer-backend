@@ -870,6 +870,35 @@ const blockCountDay = (sess) => {
   );
 }
 
+const dailyMiners = (sess) => {
+  //const today = new Date();
+  const months3 = new Date();
+  months3.setDate(months3.getDate() - 90);
+  sess.ch.query(`SELECT
+      date,
+      count(address) AS totalMiners
+    FROM
+    (
+      SELECT
+          address,
+          date
+      FROM pkt_explorer.addrincome
+      WHERE (date > '${months3.toISOString().replace(/T.*$/, '')}') AND (coinbase > 0) AND (address NOT LIKE 'script:%')
+      GROUP BY
+          address,
+          date
+    )
+    GROUP BY date
+    `, (err, ret) => {
+      if (err || !ret) {
+        return void complete(sess, dbError(err, "dailyMiners"));
+      } else {
+        return void complete(sess, null, ret);
+      }
+    }
+  );
+}
+
 const dailyTransactions1 = (sess, limit, pgnum) => {
   const lim = limitFromPage(sess, limit, pgnum, `/stats/daily-transactions`, 30);
   if (!lim) { return; }
@@ -1474,6 +1503,7 @@ const onReq = (ctx, req, res) => {
         case 'minerlist': return void minerList(sess, parts[2], parts[3]);
         case 'daily-transactions': return void dailyTransactions1(sess, parts[2], parts[3]);
         case 'block-count-24hr': return void blockCountDay(sess);
+        case 'daily-miners': return void dailyMiners(sess);
       } break;
 
       case 'ns': switch (parts[1]) {
