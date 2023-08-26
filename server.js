@@ -640,6 +640,40 @@ const address1 = (sess, address) => {
   addressBalance(sess, address);
 };
 
+const balance = (sess, addresses) => {
+  const addressList = Array.isArray(addresses) ? addresses : [addresses];
+  if (!addressList.length) return void complete(sess, { code: 400, error: "Specify at least one address", fn: 'balance' }, null);
+  if (addressList.length > 50) addressList.splice(50); // Max 50 per request
+  addressList.forEach(address => {
+    if (!isValidAddress(sess.config, address)) {
+      return void complete(sess, { code: 400, error: "Invalid Address", fn: 'balance' }, null);
+    }
+  });
+
+  sess.ch.query(`SELECT
+      sumIf(value, currentState = 'block')        AS balance,
+      address
+    FROM (
+      SELECT
+          any(value)                   AS value,
+          argMax(currentState, dateMs) AS currentState,
+          any(coinbase)                AS coinbase,
+          argMax(mintTime, dateMs)     AS mintTime,
+          address
+        FROM pkt_explorer.coins
+        WHERE address in (${addressList.map(address => `'${address}'`).join(',')})
+        GROUP BY (mintTxid, mintIndex, address)
+    )
+    GROUP BY address
+  `, (err, ret) => {
+    if (err || !ret) {
+      return void complete(sess, dbError(err, "balance"));
+    } else {
+      return void complete(sess, null, ret);
+    }
+  });
+}
+
 const queryTx = (sess, whereClause, then) => {
   sess.ch.query(`SELECT
       *
@@ -1567,6 +1601,9 @@ const onReq = (ctx, req, res) => {
           default: return void packetcryptBlock(sess, parts[1]);
         }
       }
+      
+      // /api/PKT/pkt/balance/?address=:addr&address=:addr2
+      case 'balance': return void balance(sess, query.address);
     }
   }
 
