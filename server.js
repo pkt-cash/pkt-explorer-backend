@@ -853,6 +853,23 @@ const txByTxid = (sess, txid) => {
   });
 };
 
+const blockCountDay = (sess) => {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  sess.ch.query(`SELECT count() as blockCount FROM blocks 
+    WHERE time > '${yesterday.toISOString().replace(/T.*$/, ' 00:00:00')}' 
+    AND time <= '${today.toISOString().replace(/T.*$/, ' 00:00:00')}'
+    `, (err, ret) => {
+      if (err || !ret) {
+        return void complete(sess, dbError(err, "blockCountDay"));
+      } else {
+        return void complete(sess, null, Number(ret[0].blockCount));
+      }
+    }
+  );
+}
+
 const dailyTransactions1 = (sess, limit, pgnum) => {
   const lim = limitFromPage(sess, limit, pgnum, `/stats/daily-transactions`, 30);
   if (!lim) { return; }
@@ -1456,6 +1473,7 @@ const onReq = (ctx, req, res) => {
         case 'richlist': return void richList(sess, parts[2], parts[3]);
         case 'minerlist': return void minerList(sess, parts[2], parts[3]);
         case 'daily-transactions': return void dailyTransactions1(sess, parts[2], parts[3]);
+        case 'block-count-24hr': return void blockCountDay(sess);
       } break;
 
       case 'ns': switch (parts[1]) {
