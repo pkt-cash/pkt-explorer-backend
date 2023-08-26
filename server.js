@@ -1400,6 +1400,11 @@ const enabledChains = (sess) => {
   complete(sess, null, out);
 };
 
+const isNumeric = (str) => {
+  return !isNaN(str) && // Use type coercion to parse the _entirety_ of the string (`parseFloat` alone does not do this)...
+         !isNaN(parseFloat(str)) // ...and ensure strings of whitespace fail
+}
+
 const isHash = (input) => /^[0-9a-fA-F]{64}$/.test(input);
 const isValid = (sess, input) => {
   const result = { isValid: true, type: 'invalid' };
@@ -1528,9 +1533,11 @@ const onReq = (ctx, req, res) => {
 
       case 'block': {
         const blockHash = parts[1];
+        const isBlockHeight = isNumeric(blockHash);
         switch (parts[2]) {
           case 'coins': return void blockCoins1(sess, blockHash, parts[3], parts[4]);
           case undefined: {
+            if (isBlockHeight) return void queryBlock01(sess, `height = '${e(blockHash)}'`);
             if (!hashOk(sess, blockHash, "onReq/queryBlock")) { return; }
             return void queryBlock01(sess, `hash = '${e(blockHash)}'`);
           }
