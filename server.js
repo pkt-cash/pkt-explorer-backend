@@ -641,7 +641,7 @@ const address1 = (sess, address) => {
 };
 
 const balance = (sess, addresses) => {
-  const addressList = Array.isArray(addresses) ? addresses : [addresses];
+  const addressList = Array.isArray(addresses) ? addresses : typeof addresses != 'undefined' ? [addresses] : [];
   if (!addressList.length) return void complete(sess, { code: 400, error: "Specify at least one address", fn: 'balance' }, null);
   if (addressList.length > 50) addressList.splice(50); // Max 50 per request
   addressList.forEach(address => {
