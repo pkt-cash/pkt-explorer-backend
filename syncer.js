@@ -1426,7 +1426,8 @@ const checkMempool = (ctx, done) => {
         w.abort();
         return void done(err);
       }
-      newTx = ret.filter((x) => ctx.mut.mempool.indexOf(x) === -1);
+      let i = 0;
+      newTx = ret.filter((x) => ctx.mut.mempool.indexOf(x) === -1 && i++ < 50);
       nextMempool = ret;
     }));
   }).nThen((w) => {
