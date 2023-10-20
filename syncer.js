@@ -1420,14 +1420,15 @@ const checkMempool = (ctx, done) => {
   let newTx = [];
   let nextMempool = [];
   let hasMempoolTx = false;
+  let i = 0;
   nThen((w) => {
     rpcGetMempool(ctx, w((err, ret) => {
       if (err || !ret) {
         w.abort();
         return void done(err);
       }
-      let i = 0;
       newTx = ret.filter((x) => ctx.mut.mempool.indexOf(x) === -1 && i++ < 50);
+      ctx.snclog.debug(`Got ${newTx.length} of ${ret.length} mempool txns`);
       nextMempool = ret;
     }));
   }).nThen((w) => {
@@ -1463,7 +1464,7 @@ const checkMempool = (ctx, done) => {
       }));
     }));
   }).nThen((_) => {
-    if (hasMempoolTx) { ctx.snclog.debug(`Mempool synced`); }
+    if (hasMempoolTx && i < 50) { ctx.snclog.debug(`Mempool synced`); }
     done();
   });
 };
@@ -1818,6 +1819,8 @@ const main = (config, argv) => {
           if (err) {
             ctx.snclog.error(err);
             reinit = true;
+          } else {
+            reinit = false;
           }
         }));
       }).nThen((w) => {
