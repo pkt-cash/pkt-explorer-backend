@@ -507,7 +507,15 @@ const dbCreateBalances = (ctx, done) => {
   const e = makeE(done);
   const selectClause = (s) => `SELECT
     address,
-    value * ${matchStateTrClause(s, [MASK.block])} AS balance
+    value * ${matchStateTrClause(s, [MASK.mempool])} AS mempool,
+    value * ${matchStateTrClause(s, [MASK.block])} AS balance,
+    value * ${matchStateTrClause(s, [MASK.spending])} AS spending,
+    value * ${matchStateTrClause(s, [MASK.spent])} AS spent,
+    value * ${matchStateTrClause(s, [MASK.burned])} AS burned,
+    (coinbase == 0) AS recvCount,
+    (coinbase == 1) AS mineCount,
+    1 * ${matchStateTrClause(s, [MASK.spent])} AS spentCount,
+    1 *  ${matchStateTrClause(s, [MASK.block])} AS balanceCount,
   `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
@@ -529,7 +537,15 @@ const dbCreateBalances = (ctx, done) => {
   }).nThen((w) => {
     ctx.ch.modify(`CREATE TABLE balances (
         address        String,
-        balance SimpleAggregateFunction(sum, Int64)
+        mempool SimpleAggregateFunction(sum, Int64),
+        balance SimpleAggregateFunction(sum, Int64),
+        spending SimpleAggregateFunction(sum, Int64),
+        spent SimpleAggregateFunction(sum, Int64),
+        burned SimpleAggregateFunction(sum, Int64),
+        recvCount SimpleAggregateFunction(sum, Int64),
+        mineCount SimpleAggregateFunction(sum, Int64),
+        spentCount SimpleAggregateFunction(sum, Int64),
+        balanceCount SimpleAggregateFunction(sum, Int64)
       ) ENGINE AggregatingMergeTree()
       ORDER BY address
       `, e(w));
