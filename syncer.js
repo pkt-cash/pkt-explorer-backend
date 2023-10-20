@@ -1436,6 +1436,18 @@ const checkMempool = (ctx, done) => {
       ctx.mut.mempool = nextMempool;
       return;
     }
+    ctx.ch.query(`SELECT
+        txid
+      FROM txns WHERE txid NOT IN [${newTx.map((x)=>`"${x}"`).join(',')}]
+    `, w((err, ret) => {
+      if (err || !ret) {
+        // Non-critical error, continue on anyway
+        ctx.snclog.error(err);
+        w.abort();
+        return done();
+      }
+      newTx = ret
+    }));
     getTransactionsForHashes(ctx, newTx, w((txs) => {
       hasMempoolTx = (txs.length > 0);
       dbInsertTransactions(ctx, txs.map((tx) => ({ tx: tx, block: null })), w((err) => {
@@ -1652,25 +1664,6 @@ const startup = (ctx, done) => {
         ctx.mut.tip = tip;
       }
     }));
-  }).nThen((w) => {
-    ctx.ch.query(`SELECT
-        mintTxid
-      FROM coins
-      WHERE bitShiftRight(stateTr, ${STATE_BITS}) = ${COIN_STATE.mempool >> STATE_BITS}
-    `, w((err, ret) => {
-      // CAUTION: This will return entries which were
-      // later updated and are nologer in the mempool
-      // For the purposes of populating the mempool, this doesn't much
-      // matter because these will all be cleared out next time we poll
-      // the mempool from the RPC.
-      if (err || !ret) {
-        // Non-critical error, continue on anyway
-        ctx.snclog.error(err);
-        w.abort();
-        return done();
-      }
-      ctx.mut.mempool = ret;
-    }));
   }).nThen((_) => {
     done();
   });
@@ -1695,6 +1688,9 @@ const syncChain = (ctx, reinit, done) => {
   const e = makeE(done);
   nThen((w) => {
     if (ctx.mut.tip.height > -1 && !reinit) { return; }
+    if (reinit) {
+      ctx.snclog.info("Reinit requested, re-finding chain tip");
+    }
     startup(ctx, e(w));
   }).nThen((w) => {
     rollbackAsNeeded(ctx, w((err, nh) => {
