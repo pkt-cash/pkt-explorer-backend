@@ -515,7 +515,7 @@ const dbCreateBalances = (ctx, done) => {
     (coinbase == 0) AS recvCount,
     (coinbase == 1) AS mineCount,
     1 * ${matchStateTrClause(s, [MASK.spent])} AS spentCount,
-    1 *  ${matchStateTrClause(s, [MASK.block])} AS balanceCount,
+    1 *  ${matchStateTrClause(s, [MASK.block])} AS balanceCount
   `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
