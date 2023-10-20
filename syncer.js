@@ -1438,7 +1438,7 @@ const checkMempool = (ctx, done) => {
     }
     ctx.ch.query(`SELECT
         txid
-      FROM txns WHERE txid NOT IN [${newTx.map((x)=>`"${x}"`).join(',')}]
+      FROM txns WHERE txid IN [${newTx.map((x)=>`'${x}'`).join(',')}]
     `, w((err, ret) => {
       if (err || !ret) {
         // Non-critical error, continue on anyway
@@ -1446,7 +1446,9 @@ const checkMempool = (ctx, done) => {
         w.abort();
         return done();
       }
-      newTx = ret
+      const l1 = newTx.length;
+      newTx = newTx.filter((x) => ret.indexOf(x) === -1);
+      ctx.snclog.debug(`Removed ${newTx.length - l1} txns from mempool to insert (already exist in db)`);
     }));
     getTransactionsForHashes(ctx, newTx, w((txs) => {
       hasMempoolTx = (txs.length > 0);
