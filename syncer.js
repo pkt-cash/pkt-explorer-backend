@@ -1428,7 +1428,9 @@ const checkMempool = (ctx, done) => {
         return void done(err);
       }
       newTx = ret.filter((x) => ctx.mut.mempool.indexOf(x) === -1 && i++ < 50);
-      ctx.snclog.debug(`Got ${newTx.length} of ${ret.length} mempool txns`);
+      if (newTx.length > 0) {
+        ctx.snclog.debug(`Got ${newTx.length} new mempool txns from ${ret.length} total mempool`);
+      }
       nextMempool = ret;
     }));
   }).nThen((w) => {
