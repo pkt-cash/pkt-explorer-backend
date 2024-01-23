@@ -588,7 +588,7 @@ const addressBalance = (sess, address) => {
       countIf(value, currentState = 'spent')      AS spentCount,
       countIf(value, currentState = 'block')      AS balanceCount,
       sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0))  AS mined24,
-      min(seenTime)                               AS firstSeen,
+      min(seenTime)                               AS firstSeen
     FROM (
       SELECT
           any(value)                   AS value,
