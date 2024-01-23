@@ -805,16 +805,6 @@ const createTables = (ctx, done) => {
   }).nThen((w) => {
     DATABASE.create(ctx.ch, [ClickHouse2.IF_NOT_EXISTS], e(w));
   }).nThen((w) => {
-    // Check that we're not being run with db v0
-    ctx.ch.query(`SELECT
-        count()
-      FROM tbl_blk
-    `, w((err, _) => {
-      if (!err) {
-        throw new Error("Incompatible database version, you must resync with a fresh db");
-      }
-    }));
-  }).nThen((w) => {
     // Always make sure we have the phony block in the chain table, otherwise it's impossible
     // to load the genesis because it doesn't link to anything.
     ctx.ch.insert(TABLES.chain, [phonyBlock()], e(w));
