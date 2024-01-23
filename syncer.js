@@ -554,7 +554,7 @@ const dbCreateBalances = (ctx, done) => {
         mineCount SimpleAggregateFunction(sum, Int64),
         spentCount SimpleAggregateFunction(sum, Int64),
         balanceCount SimpleAggregateFunction(sum, Int64),
-        firstSeen SimpleAggregateFunction(min, DateTime('UTC')),
+        firstSeen SimpleAggregateFunction(min, DateTime('UTC'))
       ) ENGINE AggregatingMergeTree()
       ORDER BY address
       `, e(w));
