@@ -559,7 +559,7 @@ const richList = (sess, limit, pgnum) => {
   sess.ch.query(`SELECT
       address,
       sum(balance)     AS balance
-    FROM balances
+    FROM balances2
     GROUP BY address
     ORDER BY balance DESC
     LIMIT ${lim.limit}
@@ -577,36 +577,10 @@ const richList = (sess, limit, pgnum) => {
 
 const addressBalance = (sess, address) => {
   sess.ch.query(`SELECT
-      sumIf(value, currentState = 'mempool')      AS unconfirmedReceived,
-      balance + spent + burned                    AS confirmedReceived,
-      sumIf(value, currentState = 'block')        AS balance,
-      sumIf(value, currentState = 'spending')     AS spending,
-      sumIf(value, currentState = 'spent')        AS spent,
-      sumIf(value, currentState = 'burned')       AS burned,
-      countIf(coinbase == 0)                      AS recvCount,
-      countIf(coinbase > 0)                       AS mineCount,
-      countIf(value, currentState = 'spent')      AS spentCount,
-      countIf(value, currentState = 'block')      AS balanceCount,
-      sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0))  AS mined24,
-      (
-        SELECT
-          date 
-          FROM addrincome
-          WHERE address = '${e(address)}'
-          AND received > 0
-          ORDER BY date ASC
-          LIMIT 1
-      ) AS firstSeen
-    FROM (
-      SELECT
-          any(value)                   AS value,
-          argMax(currentState, dateMs) AS currentState,
-          any(coinbase)                AS coinbase,
-          argMax(mintTime, dateMs)     AS mintTime
-        FROM coins
-        WHERE address = '${e(address)}'
-        GROUP BY (mintTxid,mintIndex)
-    )
+      *
+  FROM balances2
+  FINAL
+  WHERE address = '${e(address)}'
   `, (err, ret) => {
     if (err || !ret || !ret.length) {
       return void complete(sess, dbError(err, "addressBalance"));
@@ -651,20 +625,11 @@ const balance = (sess, addresses) => {
   });
 
   sess.ch.query(`SELECT
-      sumIf(value, currentState = 'block')        AS balance,
+      balance,
       address
-    FROM (
-      SELECT
-          any(value)                   AS value,
-          argMax(currentState, dateMs) AS currentState,
-          any(coinbase)                AS coinbase,
-          argMax(mintTime, dateMs)     AS mintTime,
-          address
-        FROM coins
-        WHERE address in (${addressList.map(address => `'${address}'`).join(',')})
-        GROUP BY (mintTxid, mintIndex, address)
-    )
-    GROUP BY address
+    FROM balances2
+    FINAL
+    WHERE address IN (${addressList.map(address => `'${address}'`).join(',')})
   `, (err, ret) => {
     if (err || !ret) {
       return void complete(sess, dbError(err, "balance"));

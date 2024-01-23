@@ -507,18 +507,34 @@ const dbCreateBalances = (ctx, done) => {
   const e = makeE(done);
   const selectClause = (s) => `SELECT
     address,
-    value * ${matchStateTrClause(s, [MASK.block])} AS balance
+    value * ${matchStateTrClause(s, [MASK.block])} AS balance,
+    value * ${matchStateTrClause(s, [MASK.mempool])} AS mempool,
+    value * ${matchStateTrClause(s, [MASK.block])} AS balance,
+    value * ${matchStateTrClause(s, [MASK.spending])} AS spending,
+    value * ${matchStateTrClause(s, [MASK.spent])} AS spent,
+    value * ${matchStateTrClause(s, [MASK.burned])} AS burned,
+    (coinbase == 0) AS recvCount,
+    (coinbase == 1) AS mineCount,
+    1 * ${matchStateTrClause(s, [MASK.spent])} AS spentCount,
+    1 *  ${matchStateTrClause(s, [MASK.block])} AS balanceCount,
+    seenTime AS firstSeen
   `;
   nThen((w) => {
     if (!ctx.recompute) { return; }
-    ctx.snclog.info('--recompute recomputing balances table');
+    ctx.snclog.info('--recompute recomputing balances2 table');
+    nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS balances2`, e(w));
+    }).nThen((w) => {
+      ctx.ch.modify(`DROP TABLE IF EXISTS balances2_mv`, e(w));
+    }).nThen(w());
+  }).nThen((w) => {
+    // old balances table, drop it
     nThen((w) => {
       ctx.ch.modify(`DROP TABLE IF EXISTS balances`, e(w));
     }).nThen((w) => {
       ctx.ch.modify(`DROP TABLE IF EXISTS balances_mv`, e(w));
     }).nThen(w());
-  }).nThen((w) => {
-    ctx.ch.query(`SELECT * FROM balances LIMIT 1`, w((err, _) => {
+    ctx.ch.query(`SELECT * FROM balances2 LIMIT 1`, w((err, _) => {
       if (eexistTable(err)) {
         return;
       }
@@ -527,26 +543,35 @@ const dbCreateBalances = (ctx, done) => {
       return void done(err);
     }));
   }).nThen((w) => {
-    ctx.ch.modify(`CREATE TABLE balances (
+    ctx.ch.modify(`CREATE TABLE balances2 (
         address        String,
-        balance SimpleAggregateFunction(sum, Int64)
+        mempool SimpleAggregateFunction(sum, Int64),
+        balance SimpleAggregateFunction(sum, Int64),
+        spending SimpleAggregateFunction(sum, Int64),
+        spent SimpleAggregateFunction(sum, Int64),
+        burned SimpleAggregateFunction(sum, Int64),
+        recvCount SimpleAggregateFunction(sum, Int64),
+        mineCount SimpleAggregateFunction(sum, Int64),
+        spentCount SimpleAggregateFunction(sum, Int64),
+        balanceCount SimpleAggregateFunction(sum, Int64),
+        firstSeen SimpleAggregateFunction(min, DateTime('UTC')),
       ) ENGINE AggregatingMergeTree()
       ORDER BY address
       `, e(w));
   }).nThen((w) => {
     // We mask the state here so that all states are from previous "nothing"
     // because this is the first time this has ever been seen.
-    ctx.ch.modify(`INSERT INTO balances ${selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`)}
+    ctx.ch.modify(`INSERT INTO balances2 ${selectClause(`bitAnd(${CURRENT_STATE_MASK}, stateTr)`)}
       FROM ${coins.name()}
       FINAL
     `, e(w));
   }).nThen((w) => {
-    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS balances_mv TO balances AS
+    ctx.ch.modify(`CREATE MATERIALIZED VIEW IF NOT EXISTS balances2_mv TO balances2 AS
       ${selectClause('stateTr')} FROM ${coins.name()}
     `, e(w));
   }).nThen((w) => {
     if (ctx.recompute) {
-      ctx.snclog.info('--recompute recomputing balances table COMPLETE');
+      ctx.snclog.info('--recompute recomputing balances2 table COMPLETE');
     }
     done();
   });
