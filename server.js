@@ -660,7 +660,7 @@ const balance = (sess, addresses) => {
           any(coinbase)                AS coinbase,
           argMax(mintTime, dateMs)     AS mintTime,
           address
-        FROM pkt_explorer.coins
+        FROM coins
         WHERE address in (${addressList.map(address => `'${address}'`).join(',')})
         GROUP BY (mintTxid, mintIndex, address)
     )
@@ -916,7 +916,7 @@ const dailyMiners = (sess) => {
       SELECT
           address,
           date
-      FROM pkt_explorer.addrincome
+      FROM addrincome
       WHERE (date > '${months3.toISOString().replace(/T.*$/, '')}') AND (coinbase > 0) AND (address NOT LIKE 'script:%')
       GROUP BY
           address,
