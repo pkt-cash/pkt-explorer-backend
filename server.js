@@ -587,7 +587,16 @@ const addressBalance = (sess, address) => {
       countIf(coinbase > 0)                       AS mineCount,
       countIf(value, currentState = 'spent')      AS spentCount,
       countIf(value, currentState = 'block')      AS balanceCount,
-      sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0))  AS mined24
+      sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0))  AS mined24,
+      (
+        SELECT
+          date 
+          FROM addrincome
+          WHERE address = '${e(address)}'
+          AND received > 0
+          ORDER BY date ASC
+          LIMIT 1
+      ) AS firstSeen
     FROM (
       SELECT
           any(value)                   AS value,
@@ -630,6 +639,40 @@ const address1 = (sess, address) => {
   }
   addressBalance(sess, address);
 };
+
+const balance = (sess, addresses) => {
+  const addressList = Array.isArray(addresses) ? addresses : typeof addresses != 'undefined' ? [addresses] : [];
+  if (!addressList.length) return void complete(sess, { code: 400, error: "Specify at least one address", fn: 'balance' }, null);
+  if (addressList.length > 50) addressList.splice(50); // Max 50 per request
+  addressList.forEach(address => {
+    if (!isValidAddress(sess.config, address)) {
+      return void complete(sess, { code: 400, error: "Invalid Address", fn: 'balance' }, null);
+    }
+  });
+
+  sess.ch.query(`SELECT
+      sumIf(value, currentState = 'block')        AS balance,
+      address
+    FROM (
+      SELECT
+          any(value)                   AS value,
+          argMax(currentState, dateMs) AS currentState,
+          any(coinbase)                AS coinbase,
+          argMax(mintTime, dateMs)     AS mintTime,
+          address
+        FROM pkt_explorer.coins
+        WHERE address in (${addressList.map(address => `'${address}'`).join(',')})
+        GROUP BY (mintTxid, mintIndex, address)
+    )
+    GROUP BY address
+  `, (err, ret) => {
+    if (err || !ret) {
+      return void complete(sess, dbError(err, "balance"));
+    } else {
+      return void complete(sess, null, ret);
+    }
+  });
+}
 
 const queryTx = (sess, whereClause, then) => {
   sess.ch.query(`SELECT
@@ -843,6 +886,52 @@ const txByTxid = (sess, txid) => {
     return void complete(sess, err, tx);
   });
 };
+
+const blockCountDay = (sess) => {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  sess.ch.query(`SELECT count() as blockCount FROM blocks 
+    WHERE time > '${yesterday.toISOString().replace(/T.*$/, ' 00:00:00')}' 
+    AND time <= '${today.toISOString().replace(/T.*$/, ' 00:00:00')}'
+    `, (err, ret) => {
+      if (err || !ret) {
+        return void complete(sess, dbError(err, "blockCountDay"));
+      } else {
+        return void complete(sess, null, Number(ret[0].blockCount));
+      }
+    }
+  );
+}
+
+const dailyMiners = (sess) => {
+  //const today = new Date();
+  const months3 = new Date();
+  months3.setDate(months3.getDate() - 90);
+  sess.ch.query(`SELECT
+      date,
+      count(address) AS totalMiners
+    FROM
+    (
+      SELECT
+          address,
+          date
+      FROM pkt_explorer.addrincome
+      WHERE (date > '${months3.toISOString().replace(/T.*$/, '')}') AND (coinbase > 0) AND (address NOT LIKE 'script:%')
+      GROUP BY
+          address,
+          date
+    )
+    GROUP BY date
+    `, (err, ret) => {
+      if (err || !ret) {
+        return void complete(sess, dbError(err, "dailyMiners"));
+      } else {
+        return void complete(sess, null, ret);
+      }
+    }
+  );
+}
 
 const dailyTransactions1 = (sess, limit, pgnum) => {
   const lim = limitFromPage(sess, limit, pgnum, `/stats/daily-transactions`, 30);
@@ -1345,6 +1434,11 @@ const enabledChains = (sess) => {
   complete(sess, null, out);
 };
 
+const isNumeric = (str) => {
+  return !isNaN(str) && // Use type coercion to parse the _entirety_ of the string (`parseFloat` alone does not do this)...
+         !isNaN(parseFloat(str)) // ...and ensure strings of whitespace fail
+}
+
 const isHash = (input) => /^[0-9a-fA-F]{64}$/.test(input);
 const isValid = (sess, input) => {
   const result = { isValid: true, type: 'invalid' };
@@ -1447,6 +1541,8 @@ const onReq = (ctx, req, res) => {
         case 'richlist': return void richList(sess, parts[2], parts[3]);
         case 'minerlist': return void minerList(sess, parts[2], parts[3]);
         case 'daily-transactions': return void dailyTransactions1(sess, parts[2], parts[3]);
+        case 'block-count-24hr': return void blockCountDay(sess);
+        case 'daily-miners': return void dailyMiners(sess);
       } break;
 
       case 'ns': switch (parts[1]) {
@@ -1471,9 +1567,11 @@ const onReq = (ctx, req, res) => {
 
       case 'block': {
         const blockHash = parts[1];
+        const isBlockHeight = isNumeric(blockHash);
         switch (parts[2]) {
           case 'coins': return void blockCoins1(sess, blockHash, parts[3], parts[4]);
           case undefined: {
+            if (isBlockHeight) return void queryBlock01(sess, `height = '${e(blockHash)}'`);
             if (!hashOk(sess, blockHash, "onReq/queryBlock")) { return; }
             return void queryBlock01(sess, `hash = '${e(blockHash)}'`);
           }
@@ -1503,6 +1601,9 @@ const onReq = (ctx, req, res) => {
           default: return void packetcryptBlock(sess, parts[1]);
         }
       }
+      
+      // /api/PKT/pkt/balance/?address=:addr&address=:addr2
+      case 'balance': return void balance(sess, query.address);
     }
   }
 
