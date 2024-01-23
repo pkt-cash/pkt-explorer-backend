@@ -507,7 +507,6 @@ const dbCreateBalances = (ctx, done) => {
   const e = makeE(done);
   const selectClause = (s) => `SELECT
     address,
-    value * ${matchStateTrClause(s, [MASK.block])} AS balance,
     value * ${matchStateTrClause(s, [MASK.mempool])} AS mempool,
     value * ${matchStateTrClause(s, [MASK.block])} AS balance,
     value * ${matchStateTrClause(s, [MASK.spending])} AS spending,
