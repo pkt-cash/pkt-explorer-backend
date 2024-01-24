@@ -577,7 +577,17 @@ const richList = (sess, limit, pgnum) => {
 
 const addressBalance = (sess, address) => {
   sess.ch.query(`SELECT
-    *
+    mempool                   AS unconfirmedReceived,
+    balance + spent + burned  AS confirmedReceived,
+    balance,
+    spending,
+    spent,
+    burned,
+    recvCount,
+    mineCount,
+    spentCount,
+    balanceCount,
+    firstSeen
   FROM (
     SELECT
       address,
@@ -595,8 +605,25 @@ const addressBalance = (sess, address) => {
   ) AS balance
   ON mined24.address = balance.address
   `, (err, ret) => {
-    if (err || !ret || !ret.length) {
+    if (err || !ret) {
       return void complete(sess, dbError(err, "addressBalance"));
+    }
+    if (!ret.length) {
+      return void complete(sess, null, {
+        "unconfirmedReceived": "0",
+        "confirmedReceived": "0",
+        "balance": "0",
+        "spending": "0",
+        "spent": "0",
+        "burned": "0",
+        "recvCount": 0,
+        "mineCount": 0,
+        "spentCount": 0,
+        "balanceCount": 0,
+        "mined24": "0",
+        "firstSeen": "1970-01-01 00:00:00",
+        "address": address
+      })
     }
     const val = ret[0];
     val.recvCount = Number(val.recvCount);
