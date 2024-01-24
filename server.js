@@ -577,29 +577,23 @@ const richList = (sess, limit, pgnum) => {
 
 const addressBalance = (sess, address) => {
   sess.ch.query(`SELECT
-      sumIf(value, currentState = 'mempool')      AS unconfirmedReceived,
-      balance + spent + burned                    AS confirmedReceived,
-      sumIf(value, currentState = 'block')        AS balance,
-      sumIf(value, currentState = 'spending')     AS spending,
-      sumIf(value, currentState = 'spent')        AS spent,
-      sumIf(value, currentState = 'burned')       AS burned,
-      countIf(coinbase == 0)                      AS recvCount,
-      countIf(coinbase > 0)                       AS mineCount,
-      countIf(value, currentState = 'spent')      AS spentCount,
-      countIf(value, currentState = 'block')      AS balanceCount,
-      sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0))  AS mined24,
-      min(seenTime)                               AS firstSeen
-    FROM (
-      SELECT
-          any(value)                   AS value,
-          argMax(currentState, dateMs) AS currentState,
-          any(coinbase)                AS coinbase,
-          argMax(mintTime, dateMs)     AS mintTime,
-          argMax(seenTime, dateMs)     AS seenTime
-        FROM coins
-        WHERE address = '${e(address)}'
-        GROUP BY (mintTxid,mintIndex)
-    )
+    *
+  FROM (
+    SELECT
+      address,
+      sumIf(value, and(mintTime > subtractHours(now(), 24), coinbase > 0)) AS mined24
+    FROM coins
+    WHERE address = '${e(address)}'
+    GROUP BY address
+  ) AS mined24
+  JOIN (
+    SELECT
+      *
+    FROM balances2
+    FINAL
+    WHERE address = '${e(address)}'
+  ) AS balance
+  ON mined24.address = balance.address
   `, (err, ret) => {
     if (err || !ret || !ret.length) {
       return void complete(sess, dbError(err, "addressBalance"));
