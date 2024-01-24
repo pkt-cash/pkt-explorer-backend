@@ -559,7 +559,7 @@ const richList = (sess, limit, pgnum) => {
   sess.ch.query(`SELECT
       address,
       sum(balance)     AS balance
-    FROM balances
+    FROM balances2
     GROUP BY address
     ORDER BY balance DESC
     LIMIT ${lim.limit}
